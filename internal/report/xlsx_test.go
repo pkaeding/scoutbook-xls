@@ -124,14 +124,17 @@ func TestRenderXLSXCreatesFileWithDenSheet(t *testing.T) {
 }
 
 func TestRenderXLSXSummaryRowsInOrder(t *testing.T) {
+	// Rank-req rows hold per-scout DateCompleted strings (binary done/not-done);
+	// adventure rows hold percent values.
+	date1a := "2025-09-11"
 	m := ReportModel{
 		DenLabel: "Webelos 1",
 		RankName: "Webelos",
 		Scouts:   scoutCols("Alice", "Bob"),
 		SummaryRows: []SummaryRow{
 			{Kind: SummaryRowSectionHeader, Label: "Rank Requirements"},
-			{Kind: SummaryRowRankReq, Label: "1a — Bobcat", Percents: []float64{0.5, 0.25}},
-			{Kind: SummaryRowRankReq, Label: "2a — Elective", Percents: []float64{0.0, 1.0}},
+			{Kind: SummaryRowRankReq, Label: "1a — Bobcat", Dates: []*string{&date1a, nil}},
+			{Kind: SummaryRowRankReq, Label: "2a — Elective", Dates: []*string{nil, nil}},
 			{Kind: SummaryRowSectionHeader, Label: "Adventures"},
 			{Kind: SummaryRowAdventure, Label: "My Family", Percents: []float64{0.75, 0.5}},
 		},
@@ -181,44 +184,40 @@ func TestRenderXLSXSummaryRowsInOrder(t *testing.T) {
 		}
 	}
 
-	// Percents on the "1a — Bobcat" row must be numeric under the hood and
-	// render with a percent sign. The row is at firstRow+1 (since first row
-	// of wantLabels is the section header).
+	// The "1a — Bobcat" row holds date strings. Scout A has a date, Scout B
+	// does not. Adventures (below) still carry percent formatting.
 	bobcatRow := firstRow + 1
-	b := cellRef("B", bobcatRow)
-	c := cellRef("C", bobcatRow)
+	bBobcat := cellRef("B", bobcatRow)
+	cBobcat := cellRef("C", bobcatRow)
+	if v, _ := f.GetCellValue(sheet, bBobcat); v != "2025-09-11" {
+		t.Errorf("%s = %q, want %q", bBobcat, v, "2025-09-11")
+	}
+	if v, _ := f.GetCellValue(sheet, cBobcat); v != "" {
+		t.Errorf("%s = %q, want \"\" (no date for this scout)", cBobcat, v)
+	}
 
-	bVal, err := f.GetCellValue(sheet, b)
+	// The adventure row ("My Family") is at firstRow+4 (Rank Requirements,
+	// 1a, 2a, Adventures section header, My Family). Scout A percent must
+	// render with a percent sign and be stored as a number with percent fmt.
+	advRow := firstRow + 4
+	bAdv := cellRef("B", advRow)
+	bVal, err := f.GetCellValue(sheet, bAdv)
 	if err != nil {
-		t.Fatalf("GetCellValue(%s) err = %v", b, err)
+		t.Fatalf("GetCellValue(%s) err = %v", bAdv, err)
 	}
 	if !strings.HasSuffix(bVal, "%") {
-		t.Errorf("%s = %q, want a value ending in %q", b, bVal, "%")
+		t.Errorf("%s = %q, want a value ending in %q", bAdv, bVal, "%")
 	}
-	cVal, err := f.GetCellValue(sheet, c)
+	btype, err := f.GetCellType(sheet, bAdv)
 	if err != nil {
-		t.Fatalf("GetCellValue(%s) err = %v", c, err)
-	}
-	if !strings.HasSuffix(cVal, "%") {
-		t.Errorf("%s = %q, want a value ending in %q", c, cVal, "%")
-	}
-
-	// Cell type must NOT be a string cell — that would mean the impl wrote a
-	// pre-formatted percent string instead of a number with a percent format.
-	btype, err := f.GetCellType(sheet, b)
-	if err != nil {
-		t.Fatalf("GetCellType(%s) err = %v", b, err)
+		t.Fatalf("GetCellType(%s) err = %v", bAdv, err)
 	}
 	if btype == excelize.CellTypeSharedString || btype == excelize.CellTypeInlineString {
-		t.Errorf("%s cell type = %v, want numeric (number/unset); percents must be stored as numbers", b, btype)
+		t.Errorf("%s cell type = %v, want numeric; percents must be stored as numbers", bAdv, btype)
 	}
-
-	// Also assert the cell has a NumFmt attached whose format string contains
-	// a percent sign. This guards against writing a raw number without a
-	// percent format.
-	styleID, err := f.GetCellStyle(sheet, b)
+	styleID, err := f.GetCellStyle(sheet, bAdv)
 	if err != nil {
-		t.Fatalf("GetCellStyle(%s) err = %v", b, err)
+		t.Fatalf("GetCellStyle(%s) err = %v", bAdv, err)
 	}
 	style, err := f.GetStyle(styleID)
 	if err != nil {
@@ -231,12 +230,11 @@ func TestRenderXLSXSummaryRowsInOrder(t *testing.T) {
 	if style.CustomNumFmt != nil && strings.Contains(*style.CustomNumFmt, "%") {
 		hasPercentFmt = true
 	}
-	// Built-in percent formats: 9 = "0%", 10 = "0.00%".
 	if style.NumFmt == 9 || style.NumFmt == 10 {
 		hasPercentFmt = true
 	}
 	if !hasPercentFmt {
-		t.Errorf("%s style has no percent number format: NumFmt=%d CustomNumFmt=%v", b, style.NumFmt, style.CustomNumFmt)
+		t.Errorf("%s style has no percent number format: NumFmt=%d CustomNumFmt=%v", bAdv, style.NumFmt, style.CustomNumFmt)
 	}
 }
 
@@ -619,6 +617,231 @@ func TestRenderXLSXNormalizesNBSPInNames(t *testing.T) {
 	}
 	if strings.Contains(advLabel, nbsp) {
 		t.Errorf("adventure A2 = %q still contains NBSP", advLabel)
+	}
+}
+
+// TestRenderXLSXSizesColumnAAndRowHeights verifies that column A is widened
+// on both the summary and adventure sheets, and that per-adventure data
+// rows grow taller than the default when labels are long.
+func TestRenderXLSXSizesColumnAAndRowHeights(t *testing.T) {
+	longReq := "1 — With your parent or legal guardian, plan, shop for, cook, and eat a balanced meal together at least once during the week."
+	m := ReportModel{
+		DenLabel: "Webelos 1",
+		RankName: "Webelos",
+		Scouts:   scoutCols("Alice", "Bob"),
+		SummaryRows: []SummaryRow{
+			{Kind: SummaryRowSectionHeader, Label: "Rank Requirements"},
+			{Kind: SummaryRowRankReq, Label: "1a — Bobcat (Webelos)", Percents: []float64{0.5, 0.25}},
+			{Kind: SummaryRowSectionHeader, Label: "Adventures"},
+			{Kind: SummaryRowAdventure, Label: "Stronger, Faster, Higher", Percents: []float64{0.5, 0.5}},
+		},
+		Adventures: []AdventureSheet{
+			{
+				AdventureId: 61,
+				Name:        "Stronger, Faster, Higher",
+				ShortName:   "Stronger, Faster, Higher",
+				Rows: []AdventureRow{
+					{Label: longReq, DatesCompleted: []*string{nil, nil}},
+				},
+				OverallPcts: []float64{0.5, 0.5},
+			},
+		},
+	}
+
+	path := xlsxTempPath(t)
+	if err := RenderXLSX(m, path); err != nil {
+		t.Fatalf("RenderXLSX err = %v", err)
+	}
+
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		t.Fatalf("OpenFile err = %v", err)
+	}
+	defer f.Close()
+
+	// Summary sheet column A should be wide enough for the longest label.
+	summaryW, err := f.GetColWidth("Webelos 1", "A")
+	if err != nil {
+		t.Fatalf("GetColWidth summary A: %v", err)
+	}
+	if summaryW < 20 {
+		t.Errorf("summary col A width = %v, want >= 20", summaryW)
+	}
+	if summaryW > 85 { // a bit of slack above the 80 cap
+		t.Errorf("summary col A width = %v, want <= 80 + slack", summaryW)
+	}
+
+	// Adventure sheet column A should be widened to adventureColAWidth (60).
+	advSheet := ""
+	for _, n := range f.GetSheetList() {
+		if n != "Webelos 1" {
+			advSheet = n
+			break
+		}
+	}
+	if advSheet == "" {
+		t.Fatalf("no per-adventure sheet found; sheets = %v", f.GetSheetList())
+	}
+	advW, err := f.GetColWidth(advSheet, "A")
+	if err != nil {
+		t.Fatalf("GetColWidth adv A: %v", err)
+	}
+	if advW < 50 {
+		t.Errorf("adventure col A width = %v, want >= 50", advW)
+	}
+
+	// Row 2 on the adventure sheet holds the long requirement. It should
+	// be taller than the default (14.25 points-ish).
+	rowH, err := f.GetRowHeight(advSheet, 2)
+	if err != nil {
+		t.Fatalf("GetRowHeight row 2: %v", err)
+	}
+	if rowH < 25 {
+		t.Errorf("adventure row 2 height = %v, want > 25 (wrapped)", rowH)
+	}
+
+	// Wrap-text should be applied to A2 on the adventure sheet.
+	styleID, err := f.GetCellStyle(advSheet, "A2")
+	if err != nil {
+		t.Fatalf("GetCellStyle A2: %v", err)
+	}
+	style, err := f.GetStyle(styleID)
+	if err != nil {
+		t.Fatalf("GetStyle(%d): %v", styleID, err)
+	}
+	if style == nil || style.Alignment == nil || !style.Alignment.WrapText {
+		t.Errorf("A2 style wrap-text = false, want true (style=%+v)", style)
+	}
+}
+
+// TestRenderXLSXRankReqSummaryCellsAreDateStrings verifies that a
+// SummaryRowRankReq row writes per-scout dates as strings (not percents).
+func TestRenderXLSXRankReqSummaryCellsAreDateStrings(t *testing.T) {
+	date := "2025-09-11"
+	m := ReportModel{
+		DenLabel: "Webelos 1",
+		RankName: "Webelos",
+		Scouts:   scoutCols("Alice", "Bob"),
+		SummaryRows: []SummaryRow{
+			{Kind: SummaryRowSectionHeader, Label: "Rank Requirements"},
+			{Kind: SummaryRowRankReq, Label: "1a — Bobcat", Dates: []*string{&date, nil}},
+		},
+	}
+	path := xlsxTempPath(t)
+	if err := RenderXLSX(m, path); err != nil {
+		t.Fatalf("RenderXLSX err = %v", err)
+	}
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		t.Fatalf("OpenFile err = %v", err)
+	}
+	defer f.Close()
+
+	// Row 3 holds "1a — Bobcat" (row 2 is the section header).
+	v, _ := f.GetCellValue("Webelos 1", "B3")
+	if v != date {
+		t.Errorf("B3 = %q, want %q", v, date)
+	}
+	v, _ = f.GetCellValue("Webelos 1", "C3")
+	if v != "" {
+		t.Errorf("C3 = %q, want \"\" (no date for this scout)", v)
+	}
+	// B3 should NOT have a percent format attached.
+	styleID, err := f.GetCellStyle("Webelos 1", "B3")
+	if err != nil {
+		t.Fatalf("GetCellStyle: %v", err)
+	}
+	style, _ := f.GetStyle(styleID)
+	if style != nil && (style.NumFmt == 9 || style.NumFmt == 10) {
+		t.Errorf("B3 has percent format (NumFmt=%d); want plain", style.NumFmt)
+	}
+}
+
+// TestRenderXLSXAllCompletedGetsGreenFill verifies a row is rendered with a
+// light-green background when every scout has completed it, and a mixed
+// row does not get the fill.
+func TestRenderXLSXAllCompletedGetsGreenFill(t *testing.T) {
+	aliceDate := "2025-09-11"
+	bobDate := "2025-09-12"
+	m := ReportModel{
+		DenLabel: "Webelos 1",
+		RankName: "Webelos",
+		Scouts:   scoutCols("Alice", "Bob"),
+		SummaryRows: []SummaryRow{
+			{Kind: SummaryRowSectionHeader, Label: "Rank Requirements"},
+			{
+				Kind:         SummaryRowRankReq,
+				Label:        "1a — Bobcat",
+				Dates:        []*string{&aliceDate, &bobDate},
+				AllCompleted: true,
+			},
+			{
+				Kind:  SummaryRowRankReq,
+				Label: "1b — Walkabout",
+				Dates: []*string{&aliceDate, nil},
+				// AllCompleted: false
+			},
+			{Kind: SummaryRowSectionHeader, Label: "Adventures"},
+			{
+				Kind:         SummaryRowAdventure,
+				Label:        "My Family",
+				Percents:     []float64{1.0, 1.0},
+				AllCompleted: true,
+			},
+		},
+	}
+	path := xlsxTempPath(t)
+	if err := RenderXLSX(m, path); err != nil {
+		t.Fatalf("RenderXLSX err = %v", err)
+	}
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		t.Fatalf("OpenFile err = %v", err)
+	}
+	defer f.Close()
+
+	hasGreenFill := func(sheet, cell string) bool {
+		styleID, err := f.GetCellStyle(sheet, cell)
+		if err != nil {
+			t.Fatalf("GetCellStyle(%s!%s): %v", sheet, cell, err)
+		}
+		style, err := f.GetStyle(styleID)
+		if err != nil || style == nil {
+			return false
+		}
+		for _, c := range style.Fill.Color {
+			if strings.EqualFold(strings.TrimPrefix(c, "#"), allCompletedFillColor) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Row 3: all complete → both label and data cells green.
+	if !hasGreenFill("Webelos 1", "A3") {
+		t.Errorf("A3 (all-completed rank-req) missing green fill")
+	}
+	if !hasGreenFill("Webelos 1", "B3") {
+		t.Errorf("B3 (all-completed rank-req) missing green fill")
+	}
+	if !hasGreenFill("Webelos 1", "C3") {
+		t.Errorf("C3 (all-completed rank-req) missing green fill")
+	}
+
+	// Row 4: partial → no green fill anywhere.
+	if hasGreenFill("Webelos 1", "A4") {
+		t.Errorf("A4 (partial rank-req) unexpectedly has green fill")
+	}
+	if hasGreenFill("Webelos 1", "B4") {
+		t.Errorf("B4 (partial rank-req) unexpectedly has green fill")
+	}
+
+	// Row 6: adventure at 100% for everyone → green fill.
+	if !hasGreenFill("Webelos 1", "A6") {
+		t.Errorf("A6 (all-completed adventure) missing green fill")
+	}
+	if !hasGreenFill("Webelos 1", "B6") {
+		t.Errorf("B6 (all-completed adventure) missing green fill")
 	}
 }
 

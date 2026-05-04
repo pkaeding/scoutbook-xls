@@ -2,8 +2,8 @@ package report
 
 import (
 	"fmt"
-	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/pkaeding/scoutbook-xls/internal/scouting"
@@ -37,16 +37,29 @@ const (
 )
 
 // SummaryRow is one row of the summary sheet.
+//
+// For SummaryRowRankReq: Dates holds each scout's completion date (nil if
+// not completed). Percents is unused in the renderer but populated for
+// callers that want it. Rank requirements are binary (done/not-done) so
+// showing a date is more informative than 0/100%.
+//
+// For SummaryRowAdventure: Percents holds each scout's percent-completed on
+// the adventure. Dates is unused.
+//
+// For SummaryRowSectionHeader: both slices are empty.
 type SummaryRow struct {
-	Kind     SummaryRowKind
-	Label    string
-	Percents []float64
+	Kind         SummaryRowKind
+	Label        string
+	Percents     []float64
+	Dates        []*string
+	AllCompleted bool
 }
 
 // AdventureRow is a single requirement row within an AdventureSheet.
 type AdventureRow struct {
 	Label          string
 	DatesCompleted []*string
+	AllCompleted   bool
 }
 
 // AdventureSheet is a per-adventure sheet in the report.
@@ -101,15 +114,8 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		}
 	}
 
-	// Summary rows: Rank Requirements section.
-	model.SummaryRows = append(model.SummaryRows, SummaryRow{
-		Kind:  SummaryRowSectionHeader,
-		Label: "Rank Requirements",
-	})
-
-	// Use the first resolved scout with populated RankReqs as the template for
-	// the rank requirement row list. (All scouts in a den should share the
-	// same rank.) If no scout has rank reqs, skip rank rows.
+	// Pick the first resolved scout with populated RankReqs as the template for
+	// the ordered rank-requirement list. All scouts in a den share the same rank.
 	var rankTemplate []scouting.RankRequirement
 	for _, s := range resolved {
 		if len(s.RankReqs.Requirements) > 0 {
@@ -118,48 +124,60 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		}
 	}
 
-	for _, tmpl := range rankTemplate {
+	// Keep only leaf requirements — ones with a non-empty requirementNumber.
+	// Parent "group" rows like "Complete the six required adventures:" have
+	// requirementNumber == "" and a non-empty childrenRequired; we skip those.
+	leafReqs := filterLeafRankReqs(rankTemplate)
+	sortRankReqs(leafReqs)
+
+	// Summary rows: Rank Requirements section.
+	model.SummaryRows = append(model.SummaryRows, SummaryRow{
+		Kind:  SummaryRowSectionHeader,
+		Label: "Rank Requirements",
+	})
+	for _, tmpl := range leafReqs {
 		row := SummaryRow{
 			Kind:     SummaryRowRankReq,
 			Label:    fmt.Sprintf("%s — %s", tmpl.RequirementNumber, tmpl.Name),
 			Percents: make([]float64, len(resolved)),
+			Dates:    make([]*string, len(resolved)),
 		}
+		allDone := len(resolved) > 0
 		for i, s := range resolved {
-			// Find this requirement by number in the scout's rank reqs.
 			for _, r := range s.RankReqs.Requirements {
 				if r.RequirementNumber == tmpl.RequirementNumber {
 					row.Percents[i] = r.PercentCompleted
+					if r.Completed || r.PercentCompleted >= 1.0 {
+						row.Dates[i] = r.DateCompleted
+					} else {
+						allDone = false
+					}
 					break
 				}
 			}
+			if row.Dates[i] == nil {
+				allDone = false
+			}
 		}
+		row.AllCompleted = allDone
 		model.SummaryRows = append(model.SummaryRows, row)
 	}
 
-	// Adventures section header.
-	model.SummaryRows = append(model.SummaryRows, SummaryRow{
-		Kind:  SummaryRowSectionHeader,
-		Label: "Adventures",
-	})
-
-	// Collect the ordered set of adventure ids started by at least one scout.
-	type advMeta struct {
-		id        int
+	// Determine which adventures were started by any resolved scout.
+	startedAdv := map[int]bool{}
+	advMetaById := map[int]struct {
 		name      string
 		shortName string
-	}
-	var advOrder []advMeta
-	seenAdv := map[int]bool{}
-	startedAdv := map[int]bool{}
+	}{}
+	var firstSeen []int // order we first saw each adventure id
 	for _, s := range resolved {
 		for _, a := range s.Adventures {
-			if !seenAdv[a.AdventureId] {
-				seenAdv[a.AdventureId] = true
-				advOrder = append(advOrder, advMeta{
-					id:        a.AdventureId,
-					name:      a.AdventureName,
-					shortName: a.ShortName,
-				})
+			if _, seen := advMetaById[a.AdventureId]; !seen {
+				advMetaById[a.AdventureId] = struct {
+					name      string
+					shortName string
+				}{name: a.AdventureName, shortName: a.ShortName}
+				firstSeen = append(firstSeen, a.AdventureId)
 			}
 			if a.PercentCompleted > 0 {
 				startedAdv[a.AdventureId] = true
@@ -167,86 +185,120 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		}
 	}
 
-	// Filter to adventures actually started.
-	var includedAdvs []advMeta
-	for _, m := range advOrder {
-		if startedAdv[m.id] {
-			includedAdvs = append(includedAdvs, m)
-		}
-	}
+	// Build the ordered adventure list for the summary + sheets:
+	//   1. Adventures linked directly to a rank requirement, in rank-req order
+	//      (only ones we have metadata for — i.e., at least one scout has
+	//      them in their list).
+	//   2. Then any other started adventures — falls through to first-seen order.
+	orderedAdvIds := orderedAdventureIds(leafReqs, advMetaById, startedAdv, firstSeen)
 
-	for _, m := range includedAdvs {
+	// Adventures section header.
+	model.SummaryRows = append(model.SummaryRows, SummaryRow{
+		Kind:  SummaryRowSectionHeader,
+		Label: "Adventures",
+	})
+	for _, advId := range orderedAdvIds {
+		meta := advMetaById[advId]
 		row := SummaryRow{
 			Kind:     SummaryRowAdventure,
-			Label:    m.name,
+			Label:    meta.name,
 			Percents: make([]float64, len(resolved)),
 		}
+		allDone := len(resolved) > 0
 		for i, s := range resolved {
+			pct := 0.0
 			for _, a := range s.Adventures {
-				if a.AdventureId == m.id {
-					row.Percents[i] = a.PercentCompleted
+				if a.AdventureId == advId {
+					pct = a.PercentCompleted
 					break
 				}
 			}
+			row.Percents[i] = pct
+			if pct < 1.0 {
+				allDone = false
+			}
 		}
+		row.AllCompleted = allDone
 		model.SummaryRows = append(model.SummaryRows, row)
 	}
 
-	// Per-adventure sheets for each included adventure.
-	for _, m := range includedAdvs {
+	// Per-adventure sheets, same order as the summary.
+	for _, advId := range orderedAdvIds {
+		meta := advMetaById[advId]
 		sheet := AdventureSheet{
-			AdventureId: m.id,
-			Name:        m.name,
-			ShortName:   m.shortName,
+			AdventureId: advId,
+			Name:        meta.name,
+			ShortName:   meta.shortName,
 			OverallPcts: make([]float64, len(resolved)),
 		}
 
-		// Collect the union of requirement numbers across scouts' detail for
-		// this adventure, and remember a display name for each number.
-		reqNames := map[string]string{}
+		// Collect the union of requirements across scouts' detail for this
+		// adventure. Skip rows where RequirementNumber == "" — those are
+		// "Note:" blurbs the API emits with the numbered requirements.
+		reqByNum := map[string]scouting.Requirement{}
 		var reqNumbers []string
 		for _, s := range resolved {
-			detail, ok := s.AdventureReqs[m.id]
+			detail, ok := s.AdventureReqs[advId]
 			if !ok {
 				continue
 			}
 			for _, r := range detail.Requirements {
-				if _, seen := reqNames[r.RequirementNumber]; !seen {
-					reqNames[r.RequirementNumber] = r.RequirementName
+				if r.RequirementNumber == "" {
+					continue
+				}
+				if _, seen := reqByNum[r.RequirementNumber]; !seen {
+					reqByNum[r.RequirementNumber] = r
 					reqNumbers = append(reqNumbers, r.RequirementNumber)
 				}
 			}
 		}
-		slices.Sort(reqNumbers)
+		// Order by the requirement's sortOrder (float).
+		sort.SliceStable(reqNumbers, func(i, j int) bool {
+			return reqByNum[reqNumbers[i]].SortOrder < reqByNum[reqNumbers[j]].SortOrder
+		})
 
 		// Per-scout overall percent for this adventure.
 		for i, s := range resolved {
 			for _, a := range s.Adventures {
-				if a.AdventureId == m.id {
+				if a.AdventureId == advId {
 					sheet.OverallPcts[i] = a.PercentCompleted
 					break
 				}
 			}
 		}
 
-		// Build the rows. Label uses the adventure's shortName per spec.
+		// Build requirement rows: label is "<number> — <requirement text>".
+		// Prefer the long requirementName; fall back to shortName if empty.
 		for _, num := range reqNumbers {
+			tmpl := reqByNum[num]
+			text := tmpl.RequirementName
+			if text == "" {
+				text = tmpl.ShortName
+			}
 			row := AdventureRow{
-				Label:          fmt.Sprintf("%s — %s", num, m.shortName),
+				Label:          fmt.Sprintf("%s — %s", num, text),
 				DatesCompleted: make([]*string, len(resolved)),
 			}
+			allDone := len(resolved) > 0
 			for i, s := range resolved {
-				detail, ok := s.AdventureReqs[m.id]
+				detail, ok := s.AdventureReqs[advId]
 				if !ok {
+					allDone = false
 					continue
 				}
+				found := false
 				for _, r := range detail.Requirements {
 					if r.RequirementNumber == num {
 						row.DatesCompleted[i] = r.DateCompleted
+						found = true
 						break
 					}
 				}
+				if !found || row.DatesCompleted[i] == nil {
+					allDone = false
+				}
 			}
+			row.AllCompleted = allDone
 			sheet.Rows = append(sheet.Rows, row)
 		}
 
@@ -254,4 +306,107 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 	}
 
 	return model
+}
+
+// filterLeafRankReqs returns only the rank requirements with a non-empty
+// RequirementNumber. Parent "group" requirements (e.g. "Complete the six
+// required adventures:") have empty RequirementNumber and ChildrenRequired
+// populated, so they're excluded from the per-scout summary table.
+func filterLeafRankReqs(reqs []scouting.RankRequirement) []scouting.RankRequirement {
+	out := make([]scouting.RankRequirement, 0, len(reqs))
+	for _, r := range reqs {
+		if r.RequirementNumber == "" {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// sortRankReqs sorts rank requirements by their dotted SortOrder string
+// ("1.1", "1.2", ..., "2.1", "2.2") as a tuple of ints. This yields the
+// natural 1a/1b/1c/1d/1e/1f/2a/2b order Scouting uses to number Webelos
+// requirements — rather than the interleaved order the API returns.
+func sortRankReqs(reqs []scouting.RankRequirement) {
+	sort.SliceStable(reqs, func(i, j int) bool {
+		return sortOrderLess(reqs[i].SortOrder, reqs[j].SortOrder)
+	})
+}
+
+// sortOrderLess compares two dotted version-style sort keys ("1.2" < "1.10"
+// < "2.1"). Falls back to string compare if a segment isn't numeric.
+func sortOrderLess(a, b string) bool {
+	aParts := strings.Split(a, ".")
+	bParts := strings.Split(b, ".")
+	for i := 0; i < len(aParts) && i < len(bParts); i++ {
+		ai, aerr := strconv.Atoi(aParts[i])
+		bi, berr := strconv.Atoi(bParts[i])
+		if aerr != nil || berr != nil {
+			// Fall back to string compare on this segment.
+			if aParts[i] != bParts[i] {
+				return aParts[i] < bParts[i]
+			}
+			continue
+		}
+		if ai != bi {
+			return ai < bi
+		}
+	}
+	return len(aParts) < len(bParts)
+}
+
+// orderedAdventureIds returns the ordered list of adventure IDs to include
+// in the summary and the per-adventure sheets.
+//
+// Ordering rules:
+//  1. Adventures linked directly to a rank requirement (by
+//     LinkedAdventureId), in rank-req order — regardless of whether any
+//     scout has started them. This pins required adventures to the top in
+//     their natural order (1a/1b/1c/...).
+//  2. Then any other adventures a scout has started, in the order we first
+//     encountered them across the scouts' adventure lists. This covers the
+//     elective slots — we only include electives at least one scout is
+//     actively working on.
+func orderedAdventureIds(
+	rankReqs []scouting.RankRequirement,
+	advMetaById map[int]struct {
+		name      string
+		shortName string
+	},
+	startedAdv map[int]bool,
+	firstSeenAdv []int,
+) []int {
+	var out []int
+	added := map[int]bool{}
+
+	// Pass 1: rank-req-linked adventures, in rank-req order. Required
+	// adventures are included even if nobody has started them — they're the
+	// rank's backbone and a 0% row is still meaningful. Skipped only when we
+	// have no metadata for the adventure (i.e., no scout has it in their
+	// list), since we'd have nothing to render.
+	for _, r := range rankReqs {
+		if r.LinkedAdventureId == nil {
+			continue
+		}
+		id := *r.LinkedAdventureId
+		if added[id] {
+			continue
+		}
+		if _, ok := advMetaById[id]; !ok {
+			continue
+		}
+		out = append(out, id)
+		added[id] = true
+	}
+
+	// Pass 2: other started adventures, in first-seen order.
+	for _, advId := range firstSeenAdv {
+		if added[advId] || !startedAdv[advId] {
+			continue
+		}
+		out = append(out, advId)
+		added[advId] = true
+	}
+
+	return out
 }

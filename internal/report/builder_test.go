@@ -2,6 +2,7 @@ package report
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -14,10 +15,13 @@ func strPtr(s string) *string { return &s }
 
 // newRankReq builds a leaf RankRequirement matching a rank-sheet row. The
 // requirement is assumed to link to a single adventure by id/name; it is NOT
-// marked electiveAdventure unless the test overrides afterwards.
+// marked electiveAdventure unless the test overrides afterwards. A sortOrder
+// is synthesized from `number` ("1a" → "1.1", "1b" → "1.2", "2a" → "2.1")
+// so the builder's rank-req ordering passes through naturally.
 func newRankReq(number, name string, linkedAdvId int, linkedAdvName string, pct float64) scouting.RankRequirement {
 	return scouting.RankRequirement{
 		RequirementNumber: number,
+		SortOrder:         sortOrderFromReqNumber(number),
 		Name:              name,
 		PercentCompleted:  pct,
 		LinkedAdventureId: &linkedAdvId,
@@ -27,6 +31,41 @@ func newRankReq(number, name string, linkedAdvId int, linkedAdvName string, pct 
 			PercentCompleted: pct,
 		},
 	}
+}
+
+// sortOrderFromReqNumber converts a scouting-style requirement number like
+// "1a" to a dotted sortOrder "1.1". Non-letter suffixes are ignored beyond
+// the digit prefix.
+func sortOrderFromReqNumber(n string) string {
+	var digits, suffix string
+	for i, c := range n {
+		if c >= '0' && c <= '9' {
+			digits += string(c)
+			continue
+		}
+		suffix = n[i:]
+		break
+	}
+	if digits == "" {
+		return ""
+	}
+	if suffix == "" {
+		return digits
+	}
+	// letter suffix → 1-indexed integer ('a'→1, 'b'→2, ...)
+	letterNum := 0
+	if len(suffix) > 0 {
+		c := suffix[0]
+		if c >= 'a' && c <= 'z' {
+			letterNum = int(c-'a') + 1
+		} else if c >= 'A' && c <= 'Z' {
+			letterNum = int(c-'A') + 1
+		}
+	}
+	if letterNum == 0 {
+		return digits
+	}
+	return digits + "." + strconv.Itoa(letterNum)
 }
 
 // newAdventure builds a scout-level Adventure entry (the filtered list item).
@@ -41,11 +80,18 @@ func newAdventure(id int, name, shortName string, pct float64) scouting.Adventur
 }
 
 // newReq builds a Requirement on an adventure detail with the given number,
-// sort/display order, and optional date-completed pointer.
+// sort/display order, and optional date-completed pointer. SortOrder is
+// derived from the leading integer of `number` so tests don't have to set
+// it explicitly ("1" → 1.0, "2" → 2.0).
 func newReq(number, name string, dateCompleted *string) scouting.Requirement {
+	sortOrder := 0.0
+	if n, err := strconv.ParseFloat(number, 64); err == nil {
+		sortOrder = n
+	}
 	return scouting.Requirement{
 		RequirementNumber: number,
 		RequirementName:   name,
+		SortOrder:         sortOrder,
 		DateCompleted:     dateCompleted,
 		IsCompleted:       dateCompleted != nil,
 	}
@@ -449,5 +495,302 @@ func TestBuildReportHandlesScoutWithNoAdventuresStarted(t *testing.T) {
 
 	if got := len(r.Adventures); got != 0 {
 		t.Errorf("len(Adventures) = %d, want 0", got)
+	}
+}
+
+// TestBuildReportExcludesParentRankRequirements verifies that "group" rank
+// requirements (ones with an empty requirementNumber like "Complete the six
+// required adventures:") don't show up as rows in the summary.
+func TestBuildReportExcludesParentRankRequirements(t *testing.T) {
+	parent := scouting.RankRequirement{
+		RequirementNumber: "", // parent / group row
+		SortOrder:         "1",
+		Name:              "Complete the six required adventures:",
+		ChildrenRequired:  "6",
+	}
+	leaf1 := newRankReq("1a", "Bobcat", 132, "Bobcat", 1.0)
+	leaf2 := newRankReq("1b", "Walkabout", 62, "Walkabout", 0.5)
+
+	rankReqs := scouting.RankRequirements{
+		Id:           11,
+		Name:         "Webelos",
+		Requirements: []scouting.RankRequirement{parent, leaf1, leaf2},
+	}
+	a := newScoutInput("Alice", "Apple", 1, rankReqs, nil, nil)
+
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{a})
+
+	for _, row := range r.SummaryRows {
+		if row.Kind == SummaryRowRankReq &&
+			strings.Contains(row.Label, "Complete the six") {
+			t.Errorf("parent requirement unexpectedly rendered as row: %q", row.Label)
+		}
+	}
+
+	rankRowCount := 0
+	for _, row := range r.SummaryRows {
+		if row.Kind == SummaryRowRankReq {
+			rankRowCount++
+		}
+	}
+	if rankRowCount != 2 {
+		t.Errorf("rank-req rows = %d, want 2 (leaves only)", rankRowCount)
+	}
+}
+
+// TestBuildReportOrdersRankReqsBySortOrder verifies that the builder sorts
+// rank requirements by the dotted sortOrder ("1.1" < "1.2" < "2.1"), which
+// yields 1a/1b/1c/2a/2b rather than the API's interleaved order.
+func TestBuildReportOrdersRankReqsBySortOrder(t *testing.T) {
+	// Delivered in an interleaved order like the real API.
+	delivered := []scouting.RankRequirement{
+		newRankReq("1a", "Bobcat", 132, "Bobcat", 0.5),
+		newRankReq("2a", "Elective", 0, "", 0.5),
+		newRankReq("1b", "Walkabout", 62, "Walkabout", 0.5),
+		newRankReq("2b", "Elective", 0, "", 0.5),
+		newRankReq("1c", "SFH", 61, "SFH", 0.5),
+	}
+	// newRankReq for "2a"/"2b" sets linkedAdvId=0, which is not a real id.
+	// Make them electives with no linked adventure for cleanliness.
+	delivered[1].LinkedAdventureId = nil
+	delivered[1].ElectiveAdventure = true
+	delivered[3].LinkedAdventureId = nil
+	delivered[3].ElectiveAdventure = true
+
+	rankReqs := scouting.RankRequirements{
+		Id: 11, Name: "Webelos", Requirements: delivered,
+	}
+	a := newScoutInput("Alice", "Apple", 1, rankReqs, nil, nil)
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{a})
+
+	want := []string{"1a", "1b", "1c", "2a", "2b"}
+	var got []string
+	for _, row := range r.SummaryRows {
+		if row.Kind != SummaryRowRankReq {
+			continue
+		}
+		// Label format is "{num} — {name}".
+		parts := strings.SplitN(row.Label, " ", 2)
+		got = append(got, parts[0])
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("rank-req order = %v, want %v", got, want)
+	}
+}
+
+// TestBuildReportOrdersAdventuresByRankReqOrder verifies that adventures
+// linked directly to rank requirements appear first (in rank-req order),
+// regardless of scout-list iteration order, and are included even when no
+// scout has started them yet.
+func TestBuildReportOrdersAdventuresByRankReqOrder(t *testing.T) {
+	// Rank has 3 required linked adventures in order: Bobcat(132),
+	// Walkabout(62), SFH(61). Plus one elective slot that links to nothing.
+	rankReqs := scouting.RankRequirements{
+		Id: 11, Name: "Webelos",
+		Requirements: []scouting.RankRequirement{
+			newRankReq("1a", "Bobcat", 132, "Bobcat", 0),
+			newRankReq("1b", "Walkabout", 62, "Walkabout", 0),
+			newRankReq("1c", "SFH", 61, "SFH", 0),
+		},
+	}
+
+	// Scout's adventures include the 3 required + 1 elective (adv 69, Art
+	// Explosion) at 0.5 progress. The API typically lists them in some
+	// arbitrary order — let's scramble them.
+	advs := []scouting.Adventure{
+		newAdventure(61, "Stronger, Faster, Higher", "SFH", 0),
+		newAdventure(69, "Art Explosion", "Art Explosion", 0.5),
+		newAdventure(132, "Bobcat (Webelos)", "Bobcat (Webelos)", 0),
+		newAdventure(62, "Webelos Walkabout", "Webelos Walkabout", 0),
+	}
+
+	a := newScoutInput("Alice", "Apple", 1, rankReqs, advs, nil)
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{a})
+
+	// Expected summary adventure rows in order: Bobcat(132), Walkabout(62),
+	// SFH(61), then Art Explosion(69) since the scout has started it.
+	wantOrder := []string{"Bobcat (Webelos)", "Webelos Walkabout", "Stronger, Faster, Higher", "Art Explosion"}
+	var got []string
+	for _, row := range r.SummaryRows {
+		if row.Kind == SummaryRowAdventure {
+			got = append(got, row.Label)
+		}
+	}
+	if !slices.Equal(got, wantOrder) {
+		t.Errorf("adventure summary order = %v, want %v", got, wantOrder)
+	}
+
+	// Per-adventure sheets should appear in the same order.
+	var sheetOrder []int
+	for _, s := range r.Adventures {
+		sheetOrder = append(sheetOrder, s.AdventureId)
+	}
+	wantSheetOrder := []int{132, 62, 61, 69}
+	if !slices.Equal(sheetOrder, wantSheetOrder) {
+		t.Errorf("adventure sheet order = %v, want %v", sheetOrder, wantSheetOrder)
+	}
+}
+
+// TestBuildReportAdventureRowLabelUsesRequirementText verifies that a
+// per-adventure sheet row's label reads "<number> — <requirement text>",
+// NOT "<number> — <adventure name>".
+func TestBuildReportAdventureRowLabelUsesRequirementText(t *testing.T) {
+	advReqs := newAdventureReqs(
+		140, "My Family", 0.25,
+		newReq("1", "With your parent, plan, cook, and eat a balanced meal.", nil),
+		newReq("2", "Carry out an act of kindness.", strPtr("2025-12-11")),
+	)
+	advs := []scouting.Adventure{newAdventure(140, "My Family", "My Family", 0.25)}
+
+	a := newScoutInput("Alice", "Apple", 1, scouting.RankRequirements{}, advs, map[int]scouting.AdventureRequirements{140: advReqs})
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{a})
+
+	sheet := findAdventureSheet(r.Adventures, 140)
+	if sheet == nil {
+		t.Fatalf("no AdventureSheet for id=140")
+	}
+	if got, want := len(sheet.Rows), 2; got != want {
+		t.Fatalf("len(Rows) = %d, want %d", got, want)
+	}
+
+	row1 := sheet.Rows[0].Label
+	if !strings.Contains(row1, "plan, cook, and eat") {
+		t.Errorf("row 0 label = %q, want to contain requirement text", row1)
+	}
+	if strings.Contains(row1, "My Family") {
+		t.Errorf("row 0 label = %q, should NOT contain the adventure name", row1)
+	}
+
+	row2 := sheet.Rows[1].Label
+	if !strings.Contains(row2, "act of kindness") {
+		t.Errorf("row 1 label = %q, want to contain requirement text", row2)
+	}
+}
+
+// TestBuildReportRankReqAllCompleted verifies AllCompleted flips true on a
+// rank-req row only when every resolved scout has a DateCompleted.
+func TestBuildReportRankReqAllCompleted(t *testing.T) {
+	completeReq := func(num, name, date string) scouting.RankRequirement {
+		r := newRankReq(num, name, 132, "Linked", 1.0)
+		r.Completed = true
+		r.DateCompleted = strPtr(date)
+		return r
+	}
+	partialReq := func(num, name string) scouting.RankRequirement {
+		r := newRankReq(num, name, 62, "Linked", 0.5)
+		return r
+	}
+	aliceRank := scouting.RankRequirements{
+		Id: 11, Name: "Webelos",
+		Requirements: []scouting.RankRequirement{
+			completeReq("1a", "Bobcat", "2025-09-11"),
+			completeReq("1b", "Walkabout", "2025-10-01"),
+		},
+	}
+	bobRank := scouting.RankRequirements{
+		Id: 11, Name: "Webelos",
+		Requirements: []scouting.RankRequirement{
+			completeReq("1a", "Bobcat", "2025-09-15"),
+			partialReq("1b", "Walkabout"),
+		},
+	}
+
+	alice := newScoutInput("Alice", "Apple", 1, aliceRank, nil, nil)
+	bob := newScoutInput("Bob", "Berry", 2, bobRank, nil, nil)
+
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{alice, bob})
+
+	findRow := func(num string) *SummaryRow {
+		for i := range r.SummaryRows {
+			if strings.HasPrefix(r.SummaryRows[i].Label, num+" ") ||
+				strings.HasPrefix(r.SummaryRows[i].Label, num+" ") {
+				return &r.SummaryRows[i]
+			}
+		}
+		return nil
+	}
+	row1a := findRow("1a")
+	if row1a == nil {
+		t.Fatalf("no row for 1a")
+	}
+	if !row1a.AllCompleted {
+		t.Errorf("1a AllCompleted = false, want true (both scouts have dates)")
+	}
+
+	row1b := findRow("1b")
+	if row1b == nil {
+		t.Fatalf("no row for 1b")
+	}
+	if row1b.AllCompleted {
+		t.Errorf("1b AllCompleted = true, want false (Bob has no date)")
+	}
+}
+
+// TestBuildReportAdventureRowAllCompleted verifies AllCompleted flips true
+// on a per-adventure-sheet row only when every scout has completed that
+// requirement.
+func TestBuildReportAdventureRowAllCompleted(t *testing.T) {
+	aliceAdvReqs := newAdventureReqs(140, "My Family", 1.0,
+		newReq("1", "first", strPtr("2025-09-01")),
+		newReq("2", "second", strPtr("2025-09-02")),
+	)
+	bobAdvReqs := newAdventureReqs(140, "My Family", 0.5,
+		newReq("1", "first", strPtr("2025-09-05")),
+		newReq("2", "second", nil),
+	)
+	advs := []scouting.Adventure{newAdventure(140, "My Family", "My Family", 0.75)}
+
+	alice := newScoutInput("Alice", "Apple", 1, scouting.RankRequirements{}, advs, map[int]scouting.AdventureRequirements{140: aliceAdvReqs})
+	bob := newScoutInput("Bob", "Berry", 2, scouting.RankRequirements{}, advs, map[int]scouting.AdventureRequirements{140: bobAdvReqs})
+
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{alice, bob})
+
+	sheet := findAdventureSheet(r.Adventures, 140)
+	if sheet == nil {
+		t.Fatalf("no AdventureSheet for id=140")
+	}
+	if len(sheet.Rows) != 2 {
+		t.Fatalf("len(Rows) = %d, want 2", len(sheet.Rows))
+	}
+	// Row "1": both scouts have dates → AllCompleted true.
+	if !sheet.Rows[0].AllCompleted {
+		t.Errorf("sheet.Rows[0] (req 1) AllCompleted = false, want true")
+	}
+	// Row "2": Bob missing → AllCompleted false.
+	if sheet.Rows[1].AllCompleted {
+		t.Errorf("sheet.Rows[1] (req 2) AllCompleted = true, want false")
+	}
+}
+
+// TestBuildReportAdventureSheetSkipsNoteRows verifies that API-provided
+// "Note:" rows (requirementNumber == "") are excluded from per-adventure
+// sheet rendering.
+func TestBuildReportAdventureSheetSkipsNoteRows(t *testing.T) {
+	note := scouting.Requirement{
+		RequirementNumber: "",
+		RequirementName:   "Note: A Cub Scout may earn this Adventure by...",
+		SortOrder:         0.1,
+	}
+	req1 := newReq("1", "Do the thing", nil)
+	advReqs := scouting.AdventureRequirements{
+		AdventureId:      140,
+		AdventureName:    "My Family",
+		PercentCompleted: 0.5,
+		Requirements:     []scouting.Requirement{note, req1},
+	}
+	advs := []scouting.Adventure{newAdventure(140, "My Family", "My Family", 0.5)}
+
+	a := newScoutInput("Alice", "Apple", 1, scouting.RankRequirements{}, advs, map[int]scouting.AdventureRequirements{140: advReqs})
+	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{a})
+
+	sheet := findAdventureSheet(r.Adventures, 140)
+	if sheet == nil {
+		t.Fatalf("no AdventureSheet for id=140")
+	}
+	if got, want := len(sheet.Rows), 1; got != want {
+		t.Fatalf("len(Rows) = %d, want %d (note rows should be skipped)", got, want)
+	}
+	if strings.Contains(sheet.Rows[0].Label, "Note:") {
+		t.Errorf("row 0 label = %q, should not be the Note row", sheet.Rows[0].Label)
 	}
 }

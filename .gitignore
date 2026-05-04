@@ -1,6 +1,7 @@
 /scoutbook-xls
 /dist/
 *.xlsx
+.~lock.*
 *.ods
 .env
 .env.local

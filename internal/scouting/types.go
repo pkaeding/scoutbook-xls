@@ -129,6 +129,7 @@ type Requirement struct {
 	RequirementNumber string  `json:"requirementNumber"`
 	RequirementName   string  `json:"requirementName"`
 	ShortName         string  `json:"shortName"`
+	SortOrder         float64 `json:"sortOrder"`
 	IsRequired        bool    `json:"isRequired"`
 	IsOptional        bool    `json:"isOptional"`
 	IsStarted         bool    `json:"isStarted"`
@@ -152,12 +153,16 @@ type RankRequirement struct {
 	Id                       int               `json:"id"`
 	Name                     string            `json:"name"`
 	RequirementNumber        string            `json:"requirementNumber"`
+	SortOrder                string            `json:"sortOrder"`
+	ParentRequirementId      *int              `json:"parentRequirementId"`
+	ChildrenRequired         string            `json:"childrenRequired"`
 	ElectiveAdventure        bool              `json:"electiveAdventure"`
 	Required                 bool              `json:"required"`
 	Started                  bool              `json:"started"`
 	Completed                bool              `json:"completed"`
 	PercentCompleted         float64           `json:"percentCompleted"`
 	Status                   string            `json:"status"`
+	DateCompleted            *string           `json:"dateCompleted"`
 	LinkedAdventureId        *int              `json:"linkedAdventureId"`
 	LinkedAdventure          LinkedAdventure   `json:"linkedAdventure"`
 	LinkedElectiveAdventures []LinkedAdventure `json:"linkedElectiveAdventures"`
