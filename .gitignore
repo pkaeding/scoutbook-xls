@@ -1,0 +1,17 @@
+/scoutbook-xls
+/dist/
+*.xlsx
+*.ods
+.env
+.env.local
+scoutbook-xls.yaml
+.scoutbook-xls.yaml
+.DS_Store
+.idea/
+.vscode/
+*.log
+coverage.out
+coverage.html
+
+# HAR captures contain real PII. Never commit.
+*.har

@@ -1,0 +1,45 @@
+{
+  "profile": {
+    "fullName": "Multi Pack User",
+    "personGuid": "11111111-1111-1111-1111-111111111111",
+    "userId": 11111111
+  },
+  "organizationPositions": [
+    {
+      "organizationGuid": "44444444-4444-4444-4444-444444444444",
+      "organizationName": "Pack 0123",
+      "unitType": "Pack",
+      "unitNumber": "0123",
+      "unitName": "Pack 0123",
+      "organizationType": "Unit",
+      "organizationTypeId": 6,
+      "charterOrgName": "Riverside Example Club",
+      "positions": [
+        {
+          "id": 472,
+          "name": "Committee Member",
+          "isPrimary": true,
+          "isKey3": false
+        }
+      ]
+    },
+    {
+      "organizationGuid": "77777777-7777-7777-7777-777777777777",
+      "organizationName": "Pack 0456",
+      "unitType": "Pack",
+      "unitNumber": "0456",
+      "unitName": "Pack 0456",
+      "organizationType": "Unit",
+      "organizationTypeId": 6,
+      "charterOrgName": "Example Charter",
+      "positions": [
+        {
+          "id": 572,
+          "name": "Den Leader",
+          "isPrimary": false,
+          "isKey3": false
+        }
+      ]
+    }
+  ]
+}

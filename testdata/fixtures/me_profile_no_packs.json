@@ -1,0 +1,25 @@
+{
+  "profile": {
+    "fullName": "No Pack User",
+    "personGuid": "00000000-0000-0000-0000-000000000000",
+    "userId": 99999999
+  },
+  "organizationPositions": [
+    {
+      "organizationGuid": "55555555-5555-5555-5555-555555555555",
+      "organizationName": "Troop 0123",
+      "acceptGender": "BT",
+      "unitType": "Troop",
+      "unitTypeId": "2",
+      "unitNumber": "0123",
+      "unitName": "Troop 0123",
+      "sbOrganizationId": 69999,
+      "organizationType": "Unit",
+      "organizationTypeId": 6,
+      "charterOrgName": "Riverside Lodge #99",
+      "positions": [
+        {"id": 472, "name": "Committee Member", "isPrimary": true, "isKey3": false}
+      ]
+    }
+  ]
+}

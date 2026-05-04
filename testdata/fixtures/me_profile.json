@@ -1,0 +1,96 @@
+{
+  "profile": {
+    "fullName": "Jean-Luc Picard",
+    "personGuid": "11111111-1111-1111-1111-111111111111",
+    "userId": 10000001
+  },
+  "organizationPositions": [
+    {
+      "organizationGuid": "44444444-4444-4444-4444-444444444444",
+      "organizationName": "Pack 0123",
+      "acceptGender": "FP",
+      "subscriptionExpireDate": "",
+      "inUnitSubscription": false,
+      "unitType": "Pack",
+      "unitTypeId": "1",
+      "unitNumber": "0123",
+      "unitName": "Pack 0123",
+      "sbOrganizationId": 60001,
+      "dateStarted": "",
+      "organizationType": "Unit",
+      "organizationTypeId": 6,
+      "charterOrgName": "Riverside Example Club",
+      "positions": [
+        {
+          "id": 472,
+          "name": "Committee Member",
+          "dateStarted": "",
+          "skPositionTypeCd": "V",
+          "expirationDate": "2026-12-31",
+          "trainedDate": "2023-05-21",
+          "trainedStatus": "Trained",
+          "isPrimary": true,
+          "isKey3": false
+        }
+      ]
+    },
+    {
+      "organizationGuid": "55555555-5555-5555-5555-555555555555",
+      "organizationName": "Troop 0123",
+      "acceptGender": "BT",
+      "subscriptionExpireDate": "",
+      "inUnitSubscription": false,
+      "unitType": "Troop",
+      "unitTypeId": "2",
+      "unitNumber": "0123",
+      "unitName": "Troop 0123",
+      "sbOrganizationId": 69999,
+      "dateStarted": "",
+      "organizationType": "Unit",
+      "organizationTypeId": 6,
+      "charterOrgName": "Riverside Lodge #99",
+      "positions": [
+        {
+          "id": 472,
+          "name": "Committee Member",
+          "dateStarted": "",
+          "skPositionTypeCd": "V",
+          "expirationDate": "2026-12-31",
+          "trainedDate": "",
+          "trainedStatus": "Not Trained",
+          "isPrimary": true,
+          "isKey3": false
+        }
+      ]
+    },
+    {
+      "organizationGuid": "66666666-6666-6666-6666-666666666666",
+      "organizationName": "Council 99",
+      "acceptGender": "",
+      "subscriptionExpireDate": "",
+      "inUnitSubscription": false,
+      "unitType": "",
+      "unitTypeId": "",
+      "unitNumber": "",
+      "unitName": "",
+      "sbOrganizationId": null,
+      "dateStarted": "",
+      "organizationType": "CouncilEntity",
+      "organizationTypeId": 5,
+      "charterOrgName": "",
+      "positions": [
+        {
+          "id": 398,
+          "name": "Merit Badge Counselor",
+          "dateStarted": "",
+          "skPositionTypeCd": "V",
+          "expirationDate": "2026-12-31",
+          "trainedDate": "2025-12-09",
+          "trainedStatus": "Trained",
+          "isPrimary": true,
+          "isKey3": false
+        }
+      ]
+    }
+  ]
+}
