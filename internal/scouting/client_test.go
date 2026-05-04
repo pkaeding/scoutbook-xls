@@ -94,8 +94,8 @@ func TestClientUnmarshalsJSON(t *testing.T) {
 		t.Fatalf("Get returned error: %v", err)
 	}
 
-	if got, want := out.AdventureId, 140; got != want {
-		t.Errorf("AdventureId = %d, want %d", got, want)
+	if got, want := out.AdventureID, 140; got != want {
+		t.Errorf("AdventureID = %d, want %d", got, want)
 	}
 	if got, want := out.AdventureName, "My Family"; got != want {
 		t.Errorf("AdventureName = %q, want %q", got, want)
@@ -149,8 +149,8 @@ func TestClientRetriesOn429(t *testing.T) {
 	if got, want := count.Load(), int32(3); got != want {
 		t.Errorf("request count = %d, want %d", got, want)
 	}
-	if got, want := out.AdventureId, 140; got != want {
-		t.Errorf("AdventureId = %d, want %d", got, want)
+	if got, want := out.AdventureID, 140; got != want {
+		t.Errorf("AdventureID = %d, want %d", got, want)
 	}
 }
 
@@ -181,8 +181,8 @@ func TestClientRetriesOn5xx(t *testing.T) {
 	if got, want := count.Load(), int32(3); got != want {
 		t.Errorf("request count = %d, want %d", got, want)
 	}
-	if got, want := out.AdventureId, 140; got != want {
-		t.Errorf("AdventureId = %d, want %d", got, want)
+	if got, want := out.AdventureID, 140; got != want {
+		t.Errorf("AdventureID = %d, want %d", got, want)
 	}
 }
 

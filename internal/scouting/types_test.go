@@ -51,7 +51,7 @@ func TestUnmarshalRoster(t *testing.T) {
 		if got, want := youth[0].FullName, "James Kirk"; got != want {
 			t.Errorf("first youth fullName = %q, want %q", got, want)
 		}
-		if got, want := youth[0].PersonGuid, "30000001-0001-0001-0001-300000000001"; got != want {
+		if got, want := youth[0].PersonGUID, "30000001-0001-0001-0001-300000000001"; got != want {
 			t.Errorf("first youth personGuid = %q, want %q", got, want)
 		}
 	}
@@ -59,7 +59,7 @@ func TestUnmarshalRoster(t *testing.T) {
 	// Wesley should be present.
 	foundWesley := false
 	for _, y := range youth {
-		if y.PersonGuid == "22222222-1111-1111-1111-222222222222" {
+		if y.PersonGUID == "22222222-1111-1111-1111-222222222222" {
 			foundWesley = true
 			if got, want := y.FullName, "Wesley Crusher"; got != want {
 				t.Errorf("wesley fullName = %q, want %q", got, want)
@@ -84,12 +84,12 @@ func TestUnmarshalPersonProfileByGuid(t *testing.T) {
 		t.Errorf("profile.fullName = %q, want %q", got, want)
 	}
 
-	// UserId is numeric in the by-guid response. Dereference the pointer.
-	if p.Profile.UserId == nil {
-		t.Fatalf("profile.userId = nil, want 20000001")
+	// UserID is numeric in the by-guid response. Dereference the pointer.
+	if p.Profile.UserID == nil {
+		t.Fatalf("profile.userID = nil, want 20000001")
 	}
-	if got, want := *p.Profile.UserId, 20000001; got != want {
-		t.Errorf("profile.userId = %d, want %d", got, want)
+	if got, want := *p.Profile.UserID, 20000001; got != want {
+		t.Errorf("profile.userID = %d, want %d", got, want)
 	}
 
 	// currentProgramsAndRanks is absent/null in the by-guid response.
@@ -103,16 +103,16 @@ func TestUnmarshalPersonProfileByUserId(t *testing.T) {
 
 	var p PersonProfile
 	if err := json.Unmarshal(data, &p); err != nil {
-		t.Fatalf("unmarshal person profile by userId: %v", err)
+		t.Fatalf("unmarshal person profile by userID: %v", err)
 	}
 
 	if got, want := p.Profile.FullName, "Wesley Crusher"; got != want {
 		t.Errorf("profile.fullName = %q, want %q", got, want)
 	}
 
-	// UserId is null in the by-userId response.
-	if p.Profile.UserId != nil {
-		t.Errorf("profile.userId = %v, want nil", *p.Profile.UserId)
+	// UserID is null in the by-userID response.
+	if p.Profile.UserID != nil {
+		t.Errorf("profile.userID = %v, want nil", *p.Profile.UserID)
 	}
 
 	if got, want := len(p.CurrentProgramsAndRanks), 1; got != want {
@@ -125,11 +125,11 @@ func TestUnmarshalPersonProfileByUserId(t *testing.T) {
 	if got, want := pr.DenNumber, "1"; got != want {
 		t.Errorf("denNumber = %q, want %q", got, want)
 	}
-	if got, want := pr.DenId, 99999; got != want {
+	if got, want := pr.DenID, 99999; got != want {
 		t.Errorf("denId = %d, want %d", got, want)
 	}
-	if got, want := pr.RankId, 10; got != want {
-		t.Errorf("rankId = %d, want %d", got, want)
+	if got, want := pr.RankID, 10; got != want {
+		t.Errorf("rankID = %d, want %d", got, want)
 	}
 }
 
@@ -155,7 +155,7 @@ func TestUnmarshalMeProfileOrganizationPositions(t *testing.T) {
 	if pack == nil {
 		t.Fatalf("no Pack organizationPosition found")
 	}
-	if got, want := pack.OrganizationGuid, "44444444-4444-4444-4444-444444444444"; got != want {
+	if got, want := pack.OrganizationGUID, "44444444-4444-4444-4444-444444444444"; got != want {
 		t.Errorf("pack organizationGuid = %q, want %q", got, want)
 	}
 }
@@ -174,12 +174,12 @@ func TestUnmarshalAdventuresList(t *testing.T) {
 
 	webelosCount := 0
 	for _, a := range adventures {
-		if a.RankId == 11 {
+		if a.RankID == 11 {
 			webelosCount++
 		}
 	}
 	if got, want := webelosCount, 18; got != want {
-		t.Errorf("Webelos (rankId=11) adventures count = %d, want %d", got, want)
+		t.Errorf("Webelos (rankID=11) adventures count = %d, want %d", got, want)
 	}
 
 	hasProgress := false
@@ -208,7 +208,7 @@ func TestUnmarshalRankWebelosRequirements(t *testing.T) {
 		t.Fatalf("unmarshal rank webelos: %v", err)
 	}
 
-	if got, want := rank.Id, 11; got != want {
+	if got, want := rank.ID, 11; got != want {
 		t.Errorf("rank.id = %d, want %d", got, want)
 	}
 	if got, want := rank.Name, "Webelos"; got != want {
@@ -240,7 +240,7 @@ func TestUnmarshalRankWebelosRequirements(t *testing.T) {
 	if req1a == nil {
 		t.Fatalf("did not find requirement 1a")
 	}
-	if got, want := req1a.LinkedAdventure.Id, 132; got != want {
+	if got, want := req1a.LinkedAdventure.ID, 132; got != want {
 		t.Errorf("req 1a linkedAdventure.id = %d, want %d", got, want)
 	}
 	if got, want := req1a.LinkedAdventure.Name, "Bobcat (Webelos)"; got != want {
@@ -256,8 +256,8 @@ func TestUnmarshalAdventure140Requirements(t *testing.T) {
 		t.Fatalf("unmarshal adventure 140: %v", err)
 	}
 
-	if got, want := adv.AdventureId, 140; got != want {
-		t.Errorf("adventureId = %d, want %d", got, want)
+	if got, want := adv.AdventureID, 140; got != want {
+		t.Errorf("adventureID = %d, want %d", got, want)
 	}
 	if got, want := adv.PercentCompleted, 0.25; got != want {
 		t.Errorf("percentCompleted = %v, want %v", got, want)

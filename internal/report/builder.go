@@ -14,7 +14,7 @@ type ScoutInput struct {
 	FirstName     string
 	LastName      string
 	FullName      string
-	UserId        int
+	UserID        int
 	RankReqs      scouting.RankRequirements
 	Adventures    []scouting.Adventure
 	AdventureReqs map[int]scouting.AdventureRequirements
@@ -24,7 +24,7 @@ type ScoutInput struct {
 type ScoutCol struct {
 	FirstName string
 	FullName  string
-	UserId    int
+	UserID    int
 }
 
 // SummaryRowKind distinguishes the kind of a SummaryRow.
@@ -64,7 +64,7 @@ type AdventureRow struct {
 
 // AdventureSheet is a per-adventure sheet in the report.
 type AdventureSheet struct {
-	AdventureId int
+	AdventureID int
 	Name        string
 	ShortName   string
 	Rows        []AdventureRow
@@ -88,12 +88,12 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		RankName: rankName,
 	}
 
-	// Filter out unresolved scouts (UserId == 0) and record warnings.
+	// Filter out unresolved scouts (UserID == 0) and record warnings.
 	resolved := make([]ScoutInput, 0, len(scouts))
 	for _, s := range scouts {
-		if s.UserId == 0 {
+		if s.UserID == 0 {
 			model.Warnings = append(model.Warnings,
-				fmt.Sprintf("Skipping scout %q: unresolved userId", s.FullName))
+				fmt.Sprintf("Skipping scout %q: unresolved userID", s.FullName))
 			continue
 		}
 		resolved = append(resolved, s)
@@ -110,7 +110,7 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		model.Scouts[i] = ScoutCol{
 			FirstName: s.FirstName,
 			FullName:  s.FullName,
-			UserId:    s.UserId,
+			UserID:    s.UserID,
 		}
 	}
 
@@ -165,22 +165,22 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 
 	// Determine which adventures were started by any resolved scout.
 	startedAdv := map[int]bool{}
-	advMetaById := map[int]struct {
+	advMetaByID := map[int]struct {
 		name      string
 		shortName string
 	}{}
 	var firstSeen []int // order we first saw each adventure id
 	for _, s := range resolved {
 		for _, a := range s.Adventures {
-			if _, seen := advMetaById[a.AdventureId]; !seen {
-				advMetaById[a.AdventureId] = struct {
+			if _, seen := advMetaByID[a.AdventureID]; !seen {
+				advMetaByID[a.AdventureID] = struct {
 					name      string
 					shortName string
 				}{name: a.AdventureName, shortName: a.ShortName}
-				firstSeen = append(firstSeen, a.AdventureId)
+				firstSeen = append(firstSeen, a.AdventureID)
 			}
 			if a.PercentCompleted > 0 {
-				startedAdv[a.AdventureId] = true
+				startedAdv[a.AdventureID] = true
 			}
 		}
 	}
@@ -190,15 +190,15 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 	//      (only ones we have metadata for — i.e., at least one scout has
 	//      them in their list).
 	//   2. Then any other started adventures — falls through to first-seen order.
-	orderedAdvIds := orderedAdventureIds(leafReqs, advMetaById, startedAdv, firstSeen)
+	orderedAdvIDs := orderedAdventureIDs(leafReqs, advMetaByID, startedAdv, firstSeen)
 
 	// Adventures section header.
 	model.SummaryRows = append(model.SummaryRows, SummaryRow{
 		Kind:  SummaryRowSectionHeader,
 		Label: "Adventures",
 	})
-	for _, advId := range orderedAdvIds {
-		meta := advMetaById[advId]
+	for _, advID := range orderedAdvIDs {
+		meta := advMetaByID[advID]
 		row := SummaryRow{
 			Kind:     SummaryRowAdventure,
 			Label:    meta.name,
@@ -208,7 +208,7 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		for i, s := range resolved {
 			pct := 0.0
 			for _, a := range s.Adventures {
-				if a.AdventureId == advId {
+				if a.AdventureID == advID {
 					pct = a.PercentCompleted
 					break
 				}
@@ -223,10 +223,10 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 	}
 
 	// Per-adventure sheets, same order as the summary.
-	for _, advId := range orderedAdvIds {
-		meta := advMetaById[advId]
+	for _, advID := range orderedAdvIDs {
+		meta := advMetaByID[advID]
 		sheet := AdventureSheet{
-			AdventureId: advId,
+			AdventureID: advID,
 			Name:        meta.name,
 			ShortName:   meta.shortName,
 			OverallPcts: make([]float64, len(resolved)),
@@ -238,7 +238,7 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		reqByNum := map[string]scouting.Requirement{}
 		var reqNumbers []string
 		for _, s := range resolved {
-			detail, ok := s.AdventureReqs[advId]
+			detail, ok := s.AdventureReqs[advID]
 			if !ok {
 				continue
 			}
@@ -260,7 +260,7 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		// Per-scout overall percent for this adventure.
 		for i, s := range resolved {
 			for _, a := range s.Adventures {
-				if a.AdventureId == advId {
+				if a.AdventureID == advID {
 					sheet.OverallPcts[i] = a.PercentCompleted
 					break
 				}
@@ -281,7 +281,7 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 			}
 			allDone := len(resolved) > 0
 			for i, s := range resolved {
-				detail, ok := s.AdventureReqs[advId]
+				detail, ok := s.AdventureReqs[advID]
 				if !ok {
 					allDone = false
 					continue
@@ -355,21 +355,21 @@ func sortOrderLess(a, b string) bool {
 	return len(aParts) < len(bParts)
 }
 
-// orderedAdventureIds returns the ordered list of adventure IDs to include
+// orderedAdventureIDs returns the ordered list of adventure IDs to include
 // in the summary and the per-adventure sheets.
 //
 // Ordering rules:
 //  1. Adventures linked directly to a rank requirement (by
-//     LinkedAdventureId), in rank-req order — regardless of whether any
+//     LinkedAdventureID), in rank-req order — regardless of whether any
 //     scout has started them. This pins required adventures to the top in
 //     their natural order (1a/1b/1c/...).
 //  2. Then any other adventures a scout has started, in the order we first
 //     encountered them across the scouts' adventure lists. This covers the
 //     elective slots — we only include electives at least one scout is
 //     actively working on.
-func orderedAdventureIds(
+func orderedAdventureIDs(
 	rankReqs []scouting.RankRequirement,
-	advMetaById map[int]struct {
+	advMetaByID map[int]struct {
 		name      string
 		shortName string
 	},
@@ -385,14 +385,14 @@ func orderedAdventureIds(
 	// have no metadata for the adventure (i.e., no scout has it in their
 	// list), since we'd have nothing to render.
 	for _, r := range rankReqs {
-		if r.LinkedAdventureId == nil {
+		if r.LinkedAdventureID == nil {
 			continue
 		}
-		id := *r.LinkedAdventureId
+		id := *r.LinkedAdventureID
 		if added[id] {
 			continue
 		}
-		if _, ok := advMetaById[id]; !ok {
+		if _, ok := advMetaByID[id]; !ok {
 			continue
 		}
 		out = append(out, id)
@@ -400,12 +400,12 @@ func orderedAdventureIds(
 	}
 
 	// Pass 2: other started adventures, in first-seen order.
-	for _, advId := range firstSeenAdv {
-		if added[advId] || !startedAdv[advId] {
+	for _, advID := range firstSeenAdv {
+		if added[advID] || !startedAdv[advID] {
 			continue
 		}
-		out = append(out, advId)
-		added[advId] = true
+		out = append(out, advID)
+		added[advID] = true
 	}
 
 	return out

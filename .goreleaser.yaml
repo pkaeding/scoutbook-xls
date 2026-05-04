@@ -1,0 +1,86 @@
+version: 2
+
+project_name: scoutbook-xls
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: scoutbook-xls
+    main: .
+    binary: scoutbook-xls
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Embed version info into the binary. Keep flags minimal; the default
+    # ldflags in goreleaser already inject Version, Commit, Date into main.
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+
+archives:
+  - id: default
+    # One archive per GOOS/GOARCH — macOS gets two separate archives rather
+    # than a universal binary so each download is smaller.
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+# Keyless cosign signing on the checksums file. CI provides an OIDC token
+# via GitHub Actions (permissions.id-token: write in the release workflow).
+# Verify locally with:
+#   cosign verify-blob \
+#     --certificate-identity-regexp 'https://github\.com/pkaeding/scoutbook-xls/\.github/workflows/release\.yml@.*' \
+#     --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+#     --signature checksums.txt.sig \
+#     --certificate checksums.txt.pem \
+#     checksums.txt
+signs:
+  - cmd: cosign
+    signature: '${artifact}.sig'
+    certificate: '${artifact}.pem'
+    args:
+      - sign-blob
+      - '--output-signature=${signature}'
+      - '--output-certificate=${certificate}'
+      - '${artifact}'
+      - '--yes'
+    artifacts: checksum
+    output: true
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+
+release:
+  draft: false
+  prerelease: auto

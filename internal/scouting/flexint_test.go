@@ -55,7 +55,7 @@ func TestFlexInt_InvalidString(t *testing.T) {
 }
 
 // TestProgramAndRank_RankIdAsString verifies ProgramAndRank tolerates the
-// polymorphic rankId/denId values observed in the wild: numbers in some
+// polymorphic rankID/denId values observed in the wild: numbers in some
 // responses, quoted numeric strings in others.
 func TestProgramAndRank_RankIdAsString(t *testing.T) {
 	cases := []struct {
@@ -88,11 +88,11 @@ func TestProgramAndRank_RankIdAsString(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.body), &p); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
-			if p.RankId != tc.wantRank {
-				t.Errorf("RankId = %d, want %d", p.RankId, tc.wantRank)
+			if p.RankID != tc.wantRank {
+				t.Errorf("RankID = %d, want %d", p.RankID, tc.wantRank)
 			}
-			if p.DenId != tc.wantDen {
-				t.Errorf("DenId = %d, want %d", p.DenId, tc.wantDen)
+			if p.DenID != tc.wantDen {
+				t.Errorf("DenID = %d, want %d", p.DenID, tc.wantDen)
 			}
 			// DenType and DenNumber should survive unmarshal through the shadow.
 			if p.DenType == "" {
@@ -106,12 +106,12 @@ func TestProgramAndRank_RankIdAsString(t *testing.T) {
 }
 
 // TestProgramAndRank_InvalidRankIdStringPropagates verifies we get a clear
-// error for unparseable rankId strings rather than silently defaulting.
+// error for unparseable rankID strings rather than silently defaulting.
 func TestProgramAndRank_InvalidRankIdStringPropagates(t *testing.T) {
 	var p ProgramAndRank
 	err := json.Unmarshal([]byte(`{"rankId":"bogus"}`), &p)
 	if err == nil {
-		t.Fatalf("expected error on bogus rankId, got nil")
+		t.Fatalf("expected error on bogus rankID, got nil")
 	}
 	if !strings.Contains(err.Error(), "bogus") {
 		t.Errorf("error = %q, want to mention %q", err.Error(), "bogus")

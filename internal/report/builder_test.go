@@ -18,15 +18,15 @@ func strPtr(s string) *string { return &s }
 // marked electiveAdventure unless the test overrides afterwards. A sortOrder
 // is synthesized from `number` ("1a" → "1.1", "1b" → "1.2", "2a" → "2.1")
 // so the builder's rank-req ordering passes through naturally.
-func newRankReq(number, name string, linkedAdvId int, linkedAdvName string, pct float64) scouting.RankRequirement {
+func newRankReq(number, name string, linkedAdvID int, linkedAdvName string, pct float64) scouting.RankRequirement {
 	return scouting.RankRequirement{
 		RequirementNumber: number,
 		SortOrder:         sortOrderFromReqNumber(number),
 		Name:              name,
 		PercentCompleted:  pct,
-		LinkedAdventureId: &linkedAdvId,
+		LinkedAdventureID: &linkedAdvID,
 		LinkedAdventure: scouting.LinkedAdventure{
-			Id:               linkedAdvId,
+			ID:               linkedAdvID,
 			Name:             linkedAdvName,
 			PercentCompleted: pct,
 		},
@@ -71,10 +71,10 @@ func sortOrderFromReqNumber(n string) string {
 // newAdventure builds a scout-level Adventure entry (the filtered list item).
 func newAdventure(id int, name, shortName string, pct float64) scouting.Adventure {
 	return scouting.Adventure{
-		AdventureId:      id,
+		AdventureID:      id,
 		AdventureName:    name,
 		ShortName:        shortName,
-		RankId:           11, // Webelos by default; tests that care can override
+		RankID:           11, // Webelos by default; tests that care can override
 		PercentCompleted: pct,
 	}
 }
@@ -101,23 +101,23 @@ func newReq(number, name string, dateCompleted *string) scouting.Requirement {
 // adventure with the provided leaf requirements.
 func newAdventureReqs(id int, name string, pct float64, reqs ...scouting.Requirement) scouting.AdventureRequirements {
 	return scouting.AdventureRequirements{
-		AdventureId:      id,
+		AdventureID:      id,
 		AdventureName:    name,
 		PercentCompleted: pct,
 		Requirements:     reqs,
 	}
 }
 
-// newScoutInput is a concise constructor for ScoutInput. The userId defaults
+// newScoutInput is a concise constructor for ScoutInput. The userID defaults
 // to a non-zero hash of the first name so the default-constructed scout is
-// considered "resolved"; tests that want an unresolved scout pass UserId=0
+// considered "resolved"; tests that want an unresolved scout pass UserID=0
 // by constructing the struct literal directly.
-func newScoutInput(first, last string, userId int, rankReqs scouting.RankRequirements, advs []scouting.Adventure, advReqs map[int]scouting.AdventureRequirements) ScoutInput {
+func newScoutInput(first, last string, userID int, rankReqs scouting.RankRequirements, advs []scouting.Adventure, advReqs map[int]scouting.AdventureRequirements) ScoutInput {
 	return ScoutInput{
 		FirstName:     first,
 		LastName:      last,
 		FullName:      first + " " + last,
-		UserId:        userId,
+		UserID:        userID,
 		RankReqs:      rankReqs,
 		Adventures:    advs,
 		AdventureReqs: advReqs,
@@ -138,7 +138,7 @@ func findSummaryRow(rows []SummaryRow, s string) int {
 // findAdventureSheet finds the AdventureSheet with the given id, or nil.
 func findAdventureSheet(sheets []AdventureSheet, id int) *AdventureSheet {
 	for i := range sheets {
-		if sheets[i].AdventureId == id {
+		if sheets[i].AdventureID == id {
 			return &sheets[i]
 		}
 	}
@@ -172,7 +172,7 @@ func TestBuildReportSummaryHasRankRequirementsFirst(t *testing.T) {
 	// Two scouts, each with two rank reqs (1a, 2a) and one adventure with
 	// percentCompleted > 0 so the adventure row is not excluded.
 	rankReqs := scouting.RankRequirements{
-		Id:   11,
+		ID:   11,
 		Name: "Webelos",
 		Requirements: []scouting.RankRequirement{
 			newRankReq("1a", "Bobcat (Webelos)", 132, "Bobcat (Webelos)", 0.5),
@@ -431,21 +431,21 @@ func TestBuildReportDenLabel(t *testing.T) {
 }
 
 func TestBuildReportSkipsScoutWithMissingUserId(t *testing.T) {
-	// One scout with UserId=0 (unresolved); should be dropped and a
+	// One scout with UserID=0 (unresolved); should be dropped and a
 	// warning should mention their name.
 	good := newScoutInput("Alice", "Apple", 1, scouting.RankRequirements{}, nil, nil)
 	bad := ScoutInput{
 		FirstName: "Zane",
 		LastName:  "Zephyr",
 		FullName:  "Zane Zephyr",
-		UserId:    0,
+		UserID:    0,
 	}
 
 	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{good, bad})
 
 	for _, s := range r.Scouts {
-		if s.UserId == 0 {
-			t.Errorf("Scouts unexpectedly contains scout with UserId=0: %+v", s)
+		if s.UserID == 0 {
+			t.Errorf("Scouts unexpectedly contains scout with UserID=0: %+v", s)
 		}
 		if s.FirstName == "Zane" {
 			t.Errorf("Scouts unexpectedly contains unresolved \"Zane\"")
@@ -512,7 +512,7 @@ func TestBuildReportExcludesParentRankRequirements(t *testing.T) {
 	leaf2 := newRankReq("1b", "Walkabout", 62, "Walkabout", 0.5)
 
 	rankReqs := scouting.RankRequirements{
-		Id:           11,
+		ID:           11,
 		Name:         "Webelos",
 		Requirements: []scouting.RankRequirement{parent, leaf1, leaf2},
 	}
@@ -550,15 +550,15 @@ func TestBuildReportOrdersRankReqsBySortOrder(t *testing.T) {
 		newRankReq("2b", "Elective", 0, "", 0.5),
 		newRankReq("1c", "SFH", 61, "SFH", 0.5),
 	}
-	// newRankReq for "2a"/"2b" sets linkedAdvId=0, which is not a real id.
+	// newRankReq for "2a"/"2b" sets linkedAdvID=0, which is not a real id.
 	// Make them electives with no linked adventure for cleanliness.
-	delivered[1].LinkedAdventureId = nil
+	delivered[1].LinkedAdventureID = nil
 	delivered[1].ElectiveAdventure = true
-	delivered[3].LinkedAdventureId = nil
+	delivered[3].LinkedAdventureID = nil
 	delivered[3].ElectiveAdventure = true
 
 	rankReqs := scouting.RankRequirements{
-		Id: 11, Name: "Webelos", Requirements: delivered,
+		ID: 11, Name: "Webelos", Requirements: delivered,
 	}
 	a := newScoutInput("Alice", "Apple", 1, rankReqs, nil, nil)
 	r := BuildReport("Webelos", "1", "Webelos", []ScoutInput{a})
@@ -586,7 +586,7 @@ func TestBuildReportOrdersAdventuresByRankReqOrder(t *testing.T) {
 	// Rank has 3 required linked adventures in order: Bobcat(132),
 	// Walkabout(62), SFH(61). Plus one elective slot that links to nothing.
 	rankReqs := scouting.RankRequirements{
-		Id: 11, Name: "Webelos",
+		ID: 11, Name: "Webelos",
 		Requirements: []scouting.RankRequirement{
 			newRankReq("1a", "Bobcat", 132, "Bobcat", 0),
 			newRankReq("1b", "Walkabout", 62, "Walkabout", 0),
@@ -623,7 +623,7 @@ func TestBuildReportOrdersAdventuresByRankReqOrder(t *testing.T) {
 	// Per-adventure sheets should appear in the same order.
 	var sheetOrder []int
 	for _, s := range r.Adventures {
-		sheetOrder = append(sheetOrder, s.AdventureId)
+		sheetOrder = append(sheetOrder, s.AdventureID)
 	}
 	wantSheetOrder := []int{132, 62, 61, 69}
 	if !slices.Equal(sheetOrder, wantSheetOrder) {
@@ -681,14 +681,14 @@ func TestBuildReportRankReqAllCompleted(t *testing.T) {
 		return r
 	}
 	aliceRank := scouting.RankRequirements{
-		Id: 11, Name: "Webelos",
+		ID: 11, Name: "Webelos",
 		Requirements: []scouting.RankRequirement{
 			completeReq("1a", "Bobcat", "2025-09-11"),
 			completeReq("1b", "Walkabout", "2025-10-01"),
 		},
 	}
 	bobRank := scouting.RankRequirements{
-		Id: 11, Name: "Webelos",
+		ID: 11, Name: "Webelos",
 		Requirements: []scouting.RankRequirement{
 			completeReq("1a", "Bobcat", "2025-09-15"),
 			partialReq("1b", "Walkabout"),
@@ -773,7 +773,7 @@ func TestBuildReportAdventureSheetSkipsNoteRows(t *testing.T) {
 	}
 	req1 := newReq("1", "Do the thing", nil)
 	advReqs := scouting.AdventureRequirements{
-		AdventureId:      140,
+		AdventureID:      140,
 		AdventureName:    "My Family",
 		PercentCompleted: 0.5,
 		Requirements:     []scouting.Requirement{note, req1},

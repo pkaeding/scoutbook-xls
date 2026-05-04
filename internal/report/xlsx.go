@@ -76,6 +76,7 @@ func normalizeSpaces(s string) string {
 //     header row, one row per requirement with DateCompleted strings
 //     written into scout columns, and a final "% Complete" row with
 //     OverallPcts formatted as percentages.
+//
 // allCompletedFillColor is the light green background applied to any row
 // where every scout has completed the requirement or adventure.
 const allCompletedFillColor = "D9EAD3"

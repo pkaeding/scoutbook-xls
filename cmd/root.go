@@ -24,7 +24,7 @@ import (
 // treated as the default production URL.
 type Config struct {
 	Token     string
-	OrgGuid   string
+	OrgGUID   string
 	DenType   string
 	DenNumber string
 	Output    string
@@ -71,7 +71,7 @@ func NewRootCmd(runner RunnerFunc) *cobra.Command {
 
 			cfg := Config{
 				Token:     v.GetString("token"),
-				OrgGuid:   v.GetString("org-guid"),
+				OrgGUID:   v.GetString("org-guid"),
 				DenType:   v.GetString("den-type"),
 				DenNumber: v.GetString("den-number"),
 				Output:    v.GetString("output"),

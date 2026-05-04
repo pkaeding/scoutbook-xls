@@ -69,7 +69,7 @@ func TestFlagsPopulateConfig(t *testing.T) {
 
 	want := Config{
 		Token:     "abc",
-		OrgGuid:   "ORG-1",
+		OrgGUID:   "ORG-1",
 		DenType:   "Webelos",
 		DenNumber: "1",
 		Output:    "/tmp/x.xlsx",
@@ -104,7 +104,7 @@ func TestEnvVarsPopulateConfig(t *testing.T) {
 
 	want := Config{
 		Token:     "env-token",
-		OrgGuid:   "ENV-ORG",
+		OrgGUID:   "ENV-ORG",
 		DenType:   "Wolf",
 		DenNumber: "7",
 		Output:    "/tmp/env.xlsx",
@@ -141,7 +141,7 @@ output: /tmp/cfg.xlsx
 
 	want := Config{
 		Token:     "cfg-token",
-		OrgGuid:   "CFG-ORG",
+		OrgGUID:   "CFG-ORG",
 		DenType:   "Bear",
 		DenNumber: "3",
 		Output:    "/tmp/cfg.xlsx",
@@ -181,7 +181,7 @@ func TestPrecedenceFlagOverridesEnv(t *testing.T) {
 
 	want := Config{
 		Token:     "flag-token",
-		OrgGuid:   "FLAG-ORG",
+		OrgGUID:   "FLAG-ORG",
 		DenType:   "Webelos",
 		DenNumber: "1",
 		Output:    "/tmp/flag.xlsx",
@@ -223,7 +223,7 @@ output: /tmp/cfg.xlsx
 
 	want := Config{
 		Token:     "env-token",
-		OrgGuid:   "ENV-ORG",
+		OrgGUID:   "ENV-ORG",
 		DenType:   "Wolf",
 		DenNumber: "7",
 		Output:    "/tmp/env.xlsx",
@@ -302,7 +302,7 @@ output: /tmp/other.xlsx
 
 	want := Config{
 		Token:     "other-token",
-		OrgGuid:   "OTHER-ORG",
+		OrgGUID:   "OTHER-ORG",
 		DenType:   "Tiger",
 		DenNumber: "2",
 		Output:    "/tmp/other.xlsx",

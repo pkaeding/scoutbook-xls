@@ -13,7 +13,7 @@ import (
 // that the upstream API already vouched for.
 type JWTClaims struct {
 	Pgu string `json:"pgu"`
-	Uid int    `json:"uid"`
+	UID int    `json:"uid"`
 	Exp int64  `json:"exp"`
 }
 
@@ -53,11 +53,11 @@ func ParseJWT(token string) (JWTClaims, error) {
 	return claims, nil
 }
 
-// DiscoverPackOrgGuid returns the organizationGuid of the single Pack-typed
+// DiscoverPackOrgGUID returns the organizationGuid of the single Pack-typed
 // OrganizationPosition in the profile. It returns ErrNoPack when zero Packs
 // are found and a wrapped ErrMultiplePacks (whose message lists the unit
 // numbers) when more than one is found.
-func DiscoverPackOrgGuid(profile PersonProfile) (string, error) {
+func DiscoverPackOrgGUID(profile PersonProfile) (string, error) {
 	var packs []OrganizationPosition
 	for _, op := range profile.OrganizationPositions {
 		if op.UnitType == "Pack" {
@@ -69,7 +69,7 @@ func DiscoverPackOrgGuid(profile PersonProfile) (string, error) {
 	case 0:
 		return "", ErrNoPack
 	case 1:
-		return packs[0].OrganizationGuid, nil
+		return packs[0].OrganizationGUID, nil
 	default:
 		numbers := make([]string, 0, len(packs))
 		for _, p := range packs {

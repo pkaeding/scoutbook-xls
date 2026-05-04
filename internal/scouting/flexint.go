@@ -8,7 +8,7 @@ import (
 
 // flexInt unmarshals from either a JSON number or a JSON string holding a
 // number. The Scouting API is inconsistent: some responses return numeric
-// IDs (e.g. rankId, denId, programId) as JSON numbers, others return the
+// IDs (e.g. rankID, denId, programId) as JSON numbers, others return the
 // same fields as JSON strings. Callers should treat this as a plain int.
 type flexInt int
 

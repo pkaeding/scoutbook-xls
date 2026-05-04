@@ -21,11 +21,11 @@ const defaultBaseURL = "https://api.scouting.org"
 // The scouting-api skill documents 8 as a reasonable value.
 const maxConcurrency = 8
 
-// rankNameById is a small fallback lookup for human-readable rank names. It's
+// rankNameByID is a small fallback lookup for human-readable rank names. It's
 // only used if the rank-requirements response didn't populate the rank name
 // (which should be rare — the API does populate it). Keys come from the
-// scouting-api SKILL.md rankId table.
-var rankNameById = map[int]string{
+// scouting-api SKILL.md rankID table.
+var rankNameByID = map[int]string{
 	14: "Lion",
 	13: "Bobcat",
 	8:  "Tiger",
@@ -35,12 +35,12 @@ var rankNameById = map[int]string{
 	12: "Arrow of Light",
 }
 
-// rankIdByDenType maps the denType a scout is assigned to (what they're
-// working toward) to the rankId whose requirements we should pull. A
+// rankIDByDenType maps the denType a scout is assigned to (what they're
+// working toward) to the rankID whose requirements we should pull. A
 // Webelos-den scout who hasn't earned Webelos yet still has a "current"
-// rankId of Bear, so deriving the target from the scout's rankId is wrong.
+// rankID of Bear, so deriving the target from the scout's rankID is wrong.
 // Den types correspond to the rank the den is earning.
-var rankIdByDenType = map[string]int{
+var rankIDByDenType = map[string]int{
 	"Lion":           14,
 	"Tiger":          8,
 	"Wolf":           9,
@@ -71,19 +71,19 @@ func Run(ctx context.Context, cfg Config) error {
 	// 2. Build the HTTP client.
 	client := scouting.NewClient(baseURL, cfg.Token)
 
-	// 3. Resolve orgGuid, either from config or via /personprofile on the
+	// 3. Resolve orgGUID, either from config or via /personprofile on the
 	//    logged-in user.
-	orgGuid := cfg.OrgGuid
-	if orgGuid == "" {
-		discovered, err := discoverOrgGuid(ctx, client, cfg.Token)
+	orgGUID := cfg.OrgGUID
+	if orgGUID == "" {
+		discovered, err := discoverOrgGUID(ctx, client, cfg.Token)
 		if err != nil {
 			return handleTokenExpired(err)
 		}
-		orgGuid = discovered
+		orgGUID = discovered
 	}
 
 	// 4. Fetch roster.
-	roster, err := scouting.FetchRoster(ctx, client, orgGuid)
+	roster, err := scouting.FetchRoster(ctx, client, orgGUID)
 	if err != nil {
 		return handleTokenExpired(err)
 	}
@@ -91,7 +91,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// 5. Extract youth members.
 	youth := scouting.ExtractYouthMembers(roster)
 	if len(youth) == 0 {
-		return fmt.Errorf("no youth members found in org %s", orgGuid)
+		return fmt.Errorf("no youth members found in org %s", orgGUID)
 	}
 
 	// 6. Resolve each youth's den (two-step personprofile).
@@ -116,15 +116,15 @@ func Run(ctx context.Context, cfg Config) error {
 	//    working toward, not what the scouts have most recently earned.
 	//    A Webelos-den scout still finishing Bear shouldn't force the whole
 	//    report onto Bear requirements.
-	rankId, ok := rankIdByDenType[cfg.DenType]
+	rankID, ok := rankIDByDenType[cfg.DenType]
 	if !ok {
 		return fmt.Errorf("unknown den-type %q; expected one of Lion, Tiger, Wolf, Bear, Webelos, Arrow of Light", cfg.DenType)
 	}
-	// Still surface any scouts whose currently-earned rankId differs from the
+	// Still surface any scouts whose currently-earned rankID differs from the
 	// den's target rank — that's a useful data-quality warning but not an error.
 	for _, s := range filtered {
-		if s.RankId != 0 && s.RankId != rankId {
-			if name, ok := rankNameById[s.RankId]; ok {
+		if s.RankID != 0 && s.RankID != rankID {
+			if name, ok := rankNameByID[s.RankID]; ok {
 				fmt.Fprintf(os.Stderr, "note: %s currently on rank %s (still earning toward den rank)\n", s.FullName, name)
 			}
 		}
@@ -143,16 +143,16 @@ func Run(ctx context.Context, cfg Config) error {
 		s := filtered[i]
 		res := scoutFetchResult{scout: s}
 
-		advs, err := scouting.FetchAdventures(ctx, client, s.UserId)
+		advs, err := scouting.FetchAdventures(ctx, client, s.UserID)
 		if err != nil {
 			res.err = fmt.Errorf("fetch adventures for %s: %w", s.FullName, err)
 			results[i] = res
 			return nil
 		}
 		res.allAdventures = advs
-		res.rankAdventures = scouting.FilterAdventuresByRank(advs, rankId)
+		res.rankAdventures = scouting.FilterAdventuresByRank(advs, rankID)
 
-		rankReqs, err := scouting.FetchRankRequirements(ctx, client, s.UserId, rankId)
+		rankReqs, err := scouting.FetchRankRequirements(ctx, client, s.UserID, rankID)
 		if err != nil {
 			res.err = fmt.Errorf("fetch rank reqs for %s: %w", s.FullName, err)
 			results[i] = res
@@ -180,11 +180,11 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// 10. Collect the set of adventures started by any scout for this rank.
-	startedAdvIds := map[int]bool{}
+	startedAdvIDs := map[int]bool{}
 	for _, r := range results {
 		for _, a := range r.rankAdventures {
 			if a.PercentCompleted > 0 {
-				startedAdvIds[a.AdventureId] = true
+				startedAdvIDs[a.AdventureID] = true
 			}
 		}
 	}
@@ -198,7 +198,7 @@ func Run(ctx context.Context, cfg Config) error {
 	//     though the identifiers are global.
 	type advPair struct {
 		scoutIdx    int
-		adventureId int
+		adventureID int
 	}
 	var pairs []advPair
 	for i, r := range results {
@@ -207,13 +207,13 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		scoutHas := map[int]bool{}
 		for _, a := range r.rankAdventures {
-			scoutHas[a.AdventureId] = true
+			scoutHas[a.AdventureID] = true
 		}
-		for advId := range startedAdvIds {
-			if !scoutHas[advId] {
+		for advID := range startedAdvIDs {
+			if !scoutHas[advID] {
 				continue
 			}
-			pairs = append(pairs, advPair{scoutIdx: i, adventureId: advId})
+			pairs = append(pairs, advPair{scoutIdx: i, adventureID: advID})
 		}
 	}
 	// Deterministic ordering keeps test output stable even if map iteration
@@ -222,7 +222,7 @@ func Run(ctx context.Context, cfg Config) error {
 		if pairs[a].scoutIdx != pairs[b].scoutIdx {
 			return pairs[a].scoutIdx < pairs[b].scoutIdx
 		}
-		return pairs[a].adventureId < pairs[b].adventureId
+		return pairs[a].adventureID < pairs[b].adventureID
 	})
 
 	advDetails := make([]map[int]scouting.AdventureRequirements, len(results))
@@ -234,17 +234,17 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := runBounded(ctx, len(pairs), maxConcurrency, func(pairIdx int) error {
 		p := pairs[pairIdx]
 		scout := results[p.scoutIdx].scout
-		detail, err := scouting.FetchAdventureRequirements(ctx, client, scout.UserId, p.adventureId)
+		detail, err := scouting.FetchAdventureRequirements(ctx, client, scout.UserID, p.adventureID)
 		if err != nil {
 			if errors.Is(err, scouting.ErrTokenExpired) {
 				return err
 			}
 			fmt.Fprintf(os.Stderr, "warning: fetch adventure %d for %s: %v\n",
-				p.adventureId, scout.FullName, err)
+				p.adventureID, scout.FullName, err)
 			return nil
 		}
 		detailsMu.Lock()
-		advDetails[p.scoutIdx][p.adventureId] = detail
+		advDetails[p.scoutIdx][p.adventureID] = detail
 		detailsMu.Unlock()
 		return nil
 	}); err != nil {
@@ -254,14 +254,14 @@ func Run(ctx context.Context, cfg Config) error {
 	// 12. Build ScoutInput slice.
 	scoutInputs := make([]report.ScoutInput, 0, len(results))
 	for i, r := range results {
-		if r.err != nil || r.scout.UserId == 0 {
+		if r.err != nil || r.scout.UserID == 0 {
 			continue
 		}
 		scoutInputs = append(scoutInputs, report.ScoutInput{
 			FirstName:     r.scout.FirstName,
 			LastName:      r.scout.LastName,
 			FullName:      r.scout.FullName,
-			UserId:        r.scout.UserId,
+			UserID:        r.scout.UserID,
 			RankReqs:      r.rankReqs,
 			Adventures:    r.rankAdventures,
 			AdventureReqs: advDetails[i],
@@ -273,7 +273,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 
 	// 13. Derive rank name. Prefer the name returned by the API; fall back to
-	//     our static table by rankId if the API didn't populate it.
+	//     our static table by rankID if the API didn't populate it.
 	rankName := ""
 	for _, s := range scoutInputs {
 		if s.RankReqs.Name != "" {
@@ -282,10 +282,10 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 	if rankName == "" {
-		if n, ok := rankNameById[rankId]; ok {
+		if n, ok := rankNameByID[rankID]; ok {
 			rankName = n
 		} else {
-			rankName = fmt.Sprintf("Rank %d", rankId)
+			rankName = fmt.Sprintf("Rank %d", rankID)
 		}
 	}
 
@@ -305,16 +305,16 @@ func Run(ctx context.Context, cfg Config) error {
 	return nil
 }
 
-// discoverOrgGuid fetches the logged-in user's profile (derived from the JWT)
+// discoverOrgGUID fetches the logged-in user's profile (derived from the JWT)
 // and returns the single Pack organizationGuid. ErrMultiplePacks is wrapped
 // with a helpful message.
-func discoverOrgGuid(ctx context.Context, client *scouting.Client, token string) (string, error) {
+func discoverOrgGUID(ctx context.Context, client *scouting.Client, token string) (string, error) {
 	claims, err := scouting.ParseJWT(token)
 	if err != nil {
 		return "", fmt.Errorf("parse JWT: %w", err)
 	}
 	if claims.Pgu == "" {
-		return "", errors.New("JWT missing pgu claim; cannot discover orgGuid")
+		return "", errors.New("JWT missing pgu claim; cannot discover orgGUID")
 	}
 
 	var me scouting.PersonProfile
@@ -323,14 +323,14 @@ func discoverOrgGuid(ctx context.Context, client *scouting.Client, token string)
 		return "", err
 	}
 
-	orgGuid, err := scouting.DiscoverPackOrgGuid(me)
+	orgGUID, err := scouting.DiscoverPackOrgGUID(me)
 	if err != nil {
 		if errors.Is(err, scouting.ErrMultiplePacks) {
 			return "", fmt.Errorf("%w — set --org-guid to disambiguate", err)
 		}
 		return "", err
 	}
-	return orgGuid, nil
+	return orgGUID, nil
 }
 
 // handleTokenExpired prints a user-friendly message for ErrTokenExpired and
@@ -397,6 +397,7 @@ func runBounded(ctx context.Context, n, concurrency int, fn func(i int) error) e
 		}
 	}
 
+schedule:
 	for i := 0; i < n; i++ {
 		// Check for early cancellation / recorded error before scheduling more.
 		if ctx.Err() != nil {
@@ -414,7 +415,7 @@ func runBounded(ctx context.Context, n, concurrency int, fn func(i int) error) e
 		case sem <- struct{}{}:
 		case <-ctx.Done():
 			setErr(ctx.Err())
-			break
+			break schedule
 		}
 
 		wg.Add(1)

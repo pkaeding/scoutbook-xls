@@ -31,9 +31,9 @@ func TestRun_EndToEnd_Wesley(t *testing.T) {
 
 	const (
 		myPgu       = "11111111-1111-1111-1111-111111111111"
-		packOrgGuid = "44444444-4444-4444-4444-444444444444"
-		wesleyGuid  = "22222222-1111-1111-1111-222222222222"
-		wesleyUid   = "20000001"
+		packOrgGUID = "44444444-4444-4444-4444-444444444444"
+		wesleyGUID  = "22222222-1111-1111-1111-222222222222"
+		wesleyUID   = "20000001"
 	)
 
 	fixturesDir := findFixturesDir(t)
@@ -49,11 +49,11 @@ func TestRun_EndToEnd_Wesley(t *testing.T) {
 	//    path — Wesley has many started adventures but we only have one
 	//    real adventure fixture (140). A minimal stub is fine for the rest.
 	//  * Any /advancements/v2/youth/{uid}/ranks/{rid}/requirements path —
-	//    Wesley's currentProgramsAndRanks has rankId=10 (still on Bear
+	//    Wesley's currentProgramsAndRanks has rankID=10 (still on Bear
 	//    while in the Webelos den), so the live request is for rank 10
 	//    even though our only rank fixture is Webelos. Serve that fixture
 	//    regardless so the test isn't tightly coupled to the fixture's
-	//    specific rankId.
+	//    specific rankID.
 	advReqRe := regexp.MustCompile(`^/advancements/v2/youth/(\d+)/adventures/(\d+)/requirements$`)
 	rankReqRe := regexp.MustCompile(`^/advancements/v2/youth/(\d+)/ranks/(\d+)/requirements$`)
 
@@ -65,25 +65,25 @@ func TestRun_EndToEnd_Wesley(t *testing.T) {
 		case "/persons/v2/" + myPgu + "/personprofile":
 			serveFixture(t, w, fixturesDir, "me_profile.json")
 			return
-		case "/organizations/positions/" + packOrgGuid:
+		case "/organizations/positions/" + packOrgGUID:
 			serveFixture(t, w, fixturesDir, "roster_pack0123.json")
 			return
-		case "/persons/v2/" + wesleyGuid + "/personprofile":
+		case "/persons/v2/" + wesleyGUID + "/personprofile":
 			serveFixture(t, w, fixturesDir, "profile_wesley_by_guid.json")
 			return
-		case "/persons/v2/" + wesleyUid + "/personprofile":
+		case "/persons/v2/" + wesleyUID + "/personprofile":
 			serveFixture(t, w, fixturesDir, "profile_wesley_by_userid.json")
 			return
-		case "/advancements/v2/youth/" + wesleyUid + "/adventures":
+		case "/advancements/v2/youth/" + wesleyUID + "/adventures":
 			serveFixture(t, w, fixturesDir, "adventures_wesley.json")
 			return
-		case "/advancements/v2/youth/" + wesleyUid + "/adventures/140/requirements":
+		case "/advancements/v2/youth/" + wesleyUID + "/adventures/140/requirements":
 			serveFixture(t, w, fixturesDir, "adventure_140_myfamily_wesley.json")
 			return
 		}
 
-		// Rank requirements for any rankId — serve the Webelos fixture.
-		if m := rankReqRe.FindStringSubmatch(path); m != nil && m[1] == wesleyUid {
+		// Rank requirements for any rankID — serve the Webelos fixture.
+		if m := rankReqRe.FindStringSubmatch(path); m != nil && m[1] == wesleyUID {
 			serveFixture(t, w, fixturesDir, "rank_webelos_wesley.json")
 			return
 		}
@@ -91,11 +91,11 @@ func TestRun_EndToEnd_Wesley(t *testing.T) {
 		// Any other per-adventure requirements path: return a minimal stub
 		// so the builder has something to iterate (but with no real rows).
 		if m := advReqRe.FindStringSubmatch(path); m != nil {
-			advId := m[2]
+			advID := m[2]
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w,
 				`{"adventureId":%s,"adventureName":"Stub","rankId":11,"percentCompleted":0,"status":"","requirements":[]}`,
-				advId)
+				advID)
 			return
 		}
 
@@ -122,7 +122,7 @@ func TestRun_EndToEnd_Wesley(t *testing.T) {
 		DenNumber: "1",
 		Output:    outPath,
 		BaseURL:   srv.URL,
-		// OrgGuid intentionally left empty so the auto-discovery path runs.
+		// OrgGUID intentionally left empty so the auto-discovery path runs.
 	}
 
 	if err := Run(context.Background(), cfg); err != nil {

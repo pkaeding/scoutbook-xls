@@ -24,7 +24,7 @@ func scoutCols(firsts ...string) []ScoutCol {
 		out[i] = ScoutCol{
 			FirstName: f,
 			FullName:  f + " Example",
-			UserId:    1000 + i,
+			UserID:    1000 + i,
 		}
 	}
 	return out
@@ -226,13 +226,8 @@ func TestRenderXLSXSummaryRowsInOrder(t *testing.T) {
 	if style == nil {
 		t.Fatalf("GetStyle(%d) returned nil", styleID)
 	}
-	hasPercentFmt := false
-	if style.CustomNumFmt != nil && strings.Contains(*style.CustomNumFmt, "%") {
-		hasPercentFmt = true
-	}
-	if style.NumFmt == 9 || style.NumFmt == 10 {
-		hasPercentFmt = true
-	}
+	hasPercentFmt := (style.CustomNumFmt != nil && strings.Contains(*style.CustomNumFmt, "%")) ||
+		style.NumFmt == 9 || style.NumFmt == 10
 	if !hasPercentFmt {
 		t.Errorf("%s style has no percent number format: NumFmt=%d CustomNumFmt=%v", bAdv, style.NumFmt, style.CustomNumFmt)
 	}
@@ -250,7 +245,7 @@ func TestRenderXLSXPerAdventureSheet(t *testing.T) {
 		},
 		Adventures: []AdventureSheet{
 			{
-				AdventureId: 140,
+				AdventureID: 140,
 				Name:        "My Family",
 				ShortName:   "MyFam",
 				Rows: []AdventureRow{
@@ -367,7 +362,7 @@ func TestRenderXLSXSheetNameTruncation(t *testing.T) {
 		},
 		Adventures: []AdventureSheet{
 			{
-				AdventureId: 200,
+				AdventureID: 200,
 				Name:        longName,
 				ShortName:   "Long",
 				Rows: []AdventureRow{
@@ -427,7 +422,7 @@ func TestRenderXLSXSheetNameCollision(t *testing.T) {
 		},
 		Adventures: []AdventureSheet{
 			{
-				AdventureId: 201,
+				AdventureID: 201,
 				Name:        nameX,
 				ShortName:   "X",
 				Rows: []AdventureRow{
@@ -436,7 +431,7 @@ func TestRenderXLSXSheetNameCollision(t *testing.T) {
 				OverallPcts: []float64{0.5},
 			},
 			{
-				AdventureId: 202,
+				AdventureID: 202,
 				Name:        nameY,
 				ShortName:   "Y",
 				Rows: []AdventureRow{
@@ -538,8 +533,8 @@ func TestRenderXLSXNormalizesNBSPInNames(t *testing.T) {
 		DenLabel: "Webelos 1",
 		RankName: "Webelos",
 		Scouts: []ScoutCol{
-			{FirstName: "Alice" + nbsp + "Marie", FullName: "Alice Marie Example", UserId: 1},
-			{FirstName: "Bob", FullName: "Bob Example", UserId: 2},
+			{FirstName: "Alice" + nbsp + "Marie", FullName: "Alice Marie Example", UserID: 1},
+			{FirstName: "Bob", FullName: "Bob Example", UserID: 2},
 		},
 		SummaryRows: []SummaryRow{
 			{Kind: SummaryRowSectionHeader, Label: "Rank" + nbsp + "Requirements"},
@@ -547,7 +542,7 @@ func TestRenderXLSXNormalizesNBSPInNames(t *testing.T) {
 		},
 		Adventures: []AdventureSheet{
 			{
-				AdventureId: 140,
+				AdventureID: 140,
 				Name:        "My" + nbsp + "Family",
 				ShortName:   "My" + nbsp + "Family",
 				Rows: []AdventureRow{
@@ -637,7 +632,7 @@ func TestRenderXLSXSizesColumnAAndRowHeights(t *testing.T) {
 		},
 		Adventures: []AdventureSheet{
 			{
-				AdventureId: 61,
+				AdventureID: 61,
 				Name:        "Stronger, Faster, Higher",
 				ShortName:   "Stronger, Faster, Higher",
 				Rows: []AdventureRow{

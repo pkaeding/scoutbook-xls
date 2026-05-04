@@ -20,8 +20,8 @@ func TestParseJWT(t *testing.T) {
 	if got, want := claims.Pgu, "11111111-1111-1111-1111-111111111111"; got != want {
 		t.Errorf("claims.Pgu = %q, want %q", got, want)
 	}
-	if got, want := claims.Uid, 10000001; got != want {
-		t.Errorf("claims.Uid = %d, want %d", got, want)
+	if got, want := claims.UID, 10000001; got != want {
+		t.Errorf("claims.UID = %d, want %d", got, want)
 	}
 	if got, want := claims.Exp, int64(9999999999); got != want {
 		t.Errorf("claims.Exp = %d, want %d", got, want)
@@ -51,9 +51,9 @@ func TestDiscoverPackOrgGuidSinglePack(t *testing.T) {
 		t.Fatalf("unmarshal me profile: %v", err)
 	}
 
-	guid, err := DiscoverPackOrgGuid(p)
+	guid, err := DiscoverPackOrgGUID(p)
 	if err != nil {
-		t.Fatalf("DiscoverPackOrgGuid: unexpected error: %v", err)
+		t.Fatalf("DiscoverPackOrgGUID: unexpected error: %v", err)
 	}
 	if got, want := guid, "44444444-4444-4444-4444-444444444444"; got != want {
 		t.Errorf("guid = %q, want %q", got, want)
@@ -68,9 +68,9 @@ func TestDiscoverPackOrgGuidNoPack(t *testing.T) {
 		t.Fatalf("unmarshal me profile: %v", err)
 	}
 
-	guid, err := DiscoverPackOrgGuid(p)
+	guid, err := DiscoverPackOrgGUID(p)
 	if err == nil {
-		t.Fatalf("DiscoverPackOrgGuid returned guid=%q, want non-nil error", guid)
+		t.Fatalf("DiscoverPackOrgGUID returned guid=%q, want non-nil error", guid)
 	}
 	if !errors.Is(err, ErrNoPack) {
 		t.Errorf("errors.Is(err, ErrNoPack) = false, want true; err = %v", err)
@@ -85,9 +85,9 @@ func TestDiscoverPackOrgGuidMultiplePacks(t *testing.T) {
 		t.Fatalf("unmarshal me profile: %v", err)
 	}
 
-	guid, err := DiscoverPackOrgGuid(p)
+	guid, err := DiscoverPackOrgGUID(p)
 	if err == nil {
-		t.Fatalf("DiscoverPackOrgGuid returned guid=%q, want non-nil error", guid)
+		t.Fatalf("DiscoverPackOrgGUID returned guid=%q, want non-nil error", guid)
 	}
 	if !errors.Is(err, ErrMultiplePacks) {
 		t.Errorf("errors.Is(err, ErrMultiplePacks) = false, want true; err = %v", err)

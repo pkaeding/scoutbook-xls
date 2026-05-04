@@ -7,21 +7,21 @@ import (
 )
 
 // FetchAdventures returns every adventure across every Cub Scout rank for
-// the given scout's userId. The response is a flat array.
-func FetchAdventures(ctx context.Context, c *Client, userId int) ([]Adventure, error) {
+// the given scout's userID. The response is a flat array.
+func FetchAdventures(ctx context.Context, c *Client, userID int) ([]Adventure, error) {
 	var out []Adventure
-	path := fmt.Sprintf("/advancements/v2/youth/%d/adventures", userId)
-	if err := c.Get(ctx, path, esbYouthProfileTarget(userId), &out); err != nil {
+	path := fmt.Sprintf("/advancements/v2/youth/%d/adventures", userID)
+	if err := c.Get(ctx, path, esbYouthProfileTarget(userID), &out); err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// FilterAdventuresByRank returns only the adventures whose RankId matches.
-func FilterAdventuresByRank(adventures []Adventure, rankId int) []Adventure {
+// FilterAdventuresByRank returns only the adventures whose RankID matches.
+func FilterAdventuresByRank(adventures []Adventure, rankID int) []Adventure {
 	var out []Adventure
 	for _, a := range adventures {
-		if a.RankId == rankId {
+		if a.RankID == rankID {
 			out = append(out, a)
 		}
 	}
@@ -30,10 +30,10 @@ func FilterAdventuresByRank(adventures []Adventure, rankId int) []Adventure {
 
 // FetchRankRequirements returns the rank object + per-requirement progress
 // for (scout, rank).
-func FetchRankRequirements(ctx context.Context, c *Client, userId, rankId int) (RankRequirements, error) {
+func FetchRankRequirements(ctx context.Context, c *Client, userID, rankID int) (RankRequirements, error) {
 	var r RankRequirements
-	path := fmt.Sprintf("/advancements/v2/youth/%d/ranks/%d/requirements", userId, rankId)
-	if err := c.Get(ctx, path, esbYouthProfileTarget(userId), &r); err != nil {
+	path := fmt.Sprintf("/advancements/v2/youth/%d/ranks/%d/requirements", userID, rankID)
+	if err := c.Get(ctx, path, esbYouthProfileTarget(userID), &r); err != nil {
 		return RankRequirements{}, err
 	}
 	return r, nil
@@ -41,18 +41,18 @@ func FetchRankRequirements(ctx context.Context, c *Client, userId, rankId int) (
 
 // FetchAdventureRequirements returns one adventure's requirement list with
 // per-requirement progress for the given scout.
-func FetchAdventureRequirements(ctx context.Context, c *Client, userId, adventureId int) (AdventureRequirements, error) {
+func FetchAdventureRequirements(ctx context.Context, c *Client, userID, adventureID int) (AdventureRequirements, error) {
 	var a AdventureRequirements
-	path := fmt.Sprintf("/advancements/v2/youth/%d/adventures/%d/requirements", userId, adventureId)
-	if err := c.Get(ctx, path, esbYouthProfileTarget(userId), &a); err != nil {
+	path := fmt.Sprintf("/advancements/v2/youth/%d/adventures/%d/requirements", userID, adventureID)
+	if err := c.Get(ctx, path, esbYouthProfileTarget(userID), &a); err != nil {
 		return AdventureRequirements{}, err
 	}
 	return a, nil
 }
 
-// DetermineTargetRank picks the rankId held by the majority of scouts.
-// Ties are broken by smallest rankId (deterministic). Any scout whose
-// rankId differs from the winner is surfaced by name in warnings. If the
+// DetermineTargetRank picks the rankID held by the majority of scouts.
+// Ties are broken by smallest rankID (deterministic). Any scout whose
+// rankID differs from the winner is surfaced by name in warnings. If the
 // input is empty the result is (0, []string{"no scouts"}).
 func DetermineTargetRank(scouts []ScoutWithDen) (int, []string) {
 	if len(scouts) == 0 {
@@ -61,7 +61,7 @@ func DetermineTargetRank(scouts []ScoutWithDen) (int, []string) {
 
 	counts := map[int]int{}
 	for _, s := range scouts {
-		counts[s.RankId]++
+		counts[s.RankID]++
 	}
 
 	// Rank ids sorted ascending so equal counts resolve to the smallest id.
@@ -87,19 +87,19 @@ func DetermineTargetRank(scouts []ScoutWithDen) (int, []string) {
 
 	var warnings []string
 	// Include a summary of the tie/split so warnings reference each non-target
-	// rankId (needed for the tie test which asserts both "10" and "11" appear).
+	// rankID (needed for the tie test which asserts both "10" and "11" appear).
 	for _, id := range ids {
 		if id == target {
 			continue
 		}
 		var names []string
 		for _, s := range scouts {
-			if s.RankId == id {
+			if s.RankID == id {
 				names = append(names, s.FullName)
 			}
 		}
 		warnings = append(warnings, fmt.Sprintf(
-			"rankId %d (%d scouts) differs from target rankId %d: %v",
+			"rankID %d (%d scouts) differs from target rankID %d: %v",
 			id, counts[id], target, names,
 		))
 	}

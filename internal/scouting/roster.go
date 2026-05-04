@@ -10,15 +10,15 @@ import (
 // roster and both shapes of the /personprofile response. It's the unit the
 // rest of the pipeline operates on.
 type ScoutWithDen struct {
-	PersonGuid string
+	PersonGUID string
 	FullName   string
 	FirstName  string
 	LastName   string
-	UserId     int
+	UserID     int
 	DenType    string
 	DenNumber  string
-	DenId      int
-	RankId     int
+	DenID      int
+	RankID     int
 }
 
 // esbRosterTarget mimics the value the SPA puts in x-esb-url when loading
@@ -28,15 +28,15 @@ const esbRosterTarget = "https://advancements.scouting.org/roster"
 
 // esbYouthProfileTarget builds the x-esb-url value the SPA uses when
 // loading a youth's profile/advancement page.
-func esbYouthProfileTarget(userId int) string {
-	return fmt.Sprintf("https://advancements.scouting.org/youthProfile/%d", userId)
+func esbYouthProfileTarget(userID int) string {
+	return fmt.Sprintf("https://advancements.scouting.org/youthProfile/%d", userID)
 }
 
 // FetchRoster returns the Pack roster (all registered positions + the
 // people assigned to each) for the given organizationGuid.
-func FetchRoster(ctx context.Context, c *Client, orgGuid string) (Roster, error) {
+func FetchRoster(ctx context.Context, c *Client, orgGUID string) (Roster, error) {
 	var r Roster
-	path := "/organizations/positions/" + orgGuid
+	path := "/organizations/positions/" + orgGUID
 	if err := c.Get(ctx, path, esbRosterTarget, &r); err != nil {
 		return Roster{}, err
 	}
@@ -57,12 +57,12 @@ func ExtractYouthMembers(r Roster) []YouthMember {
 	return out
 }
 
-// fetchProfileByGuid calls the polymorphic /personprofile endpoint with a
-// personGuid. The response shape yields profile.userId.
-func fetchProfileByGuid(ctx context.Context, c *Client, personGuid string) (PersonProfile, error) {
+// fetchProfileByGUID calls the polymorphic /personprofile endpoint with a
+// personGUID. The response shape yields profile.userID.
+func fetchProfileByGUID(ctx context.Context, c *Client, personGUID string) (PersonProfile, error) {
 	var p PersonProfile
-	path := "/persons/v2/" + personGuid + "/personprofile"
-	// The SPA uses the scout's userId in the x-esb-url — but at this point
+	path := "/persons/v2/" + personGUID + "/personprofile"
+	// The SPA uses the scout's userID in the x-esb-url — but at this point
 	// we don't know it yet. The target is advisory only; use the roster page.
 	if err := c.Get(ctx, path, esbRosterTarget, &p); err != nil {
 		return PersonProfile{}, err
@@ -70,12 +70,12 @@ func fetchProfileByGuid(ctx context.Context, c *Client, personGuid string) (Pers
 	return p, nil
 }
 
-// fetchProfileByUserId calls the polymorphic /personprofile endpoint with
-// a numeric userId. The response shape yields currentProgramsAndRanks.
-func fetchProfileByUserId(ctx context.Context, c *Client, userId int) (PersonProfile, error) {
+// fetchProfileByUserID calls the polymorphic /personprofile endpoint with
+// a numeric userID. The response shape yields currentProgramsAndRanks.
+func fetchProfileByUserID(ctx context.Context, c *Client, userID int) (PersonProfile, error) {
 	var p PersonProfile
-	path := fmt.Sprintf("/persons/v2/%d/personprofile", userId)
-	if err := c.Get(ctx, path, esbYouthProfileTarget(userId), &p); err != nil {
+	path := fmt.Sprintf("/persons/v2/%d/personprofile", userID)
+	if err := c.Get(ctx, path, esbYouthProfileTarget(userID), &p); err != nil {
 		return PersonProfile{}, err
 	}
 	return p, nil
@@ -118,48 +118,48 @@ func ResolveScoutDens(ctx context.Context, c *Client, youth []YouthMember, concu
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			// Step 1: personGuid → userId.
-			byGuid, err := fetchProfileByGuid(ctx, c, y.PersonGuid)
+			// Step 1: personGUID → userID.
+			byGUID, err := fetchProfileByGUID(ctx, c, y.PersonGUID)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("%s: fetch profile by guid: %w", y.FullName, err))
 				mu.Unlock()
 				return
 			}
-			if byGuid.Profile.UserId == nil {
+			if byGUID.Profile.UserID == nil {
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("%s: profile by guid missing userId", y.FullName))
+				errs = append(errs, fmt.Errorf("%s: profile by guid missing userID", y.FullName))
 				mu.Unlock()
 				return
 			}
-			userId := *byGuid.Profile.UserId
+			userID := *byGUID.Profile.UserID
 
-			// Step 2: userId → den info.
-			byUserId, err := fetchProfileByUserId(ctx, c, userId)
+			// Step 2: userID → den info.
+			byUserID, err := fetchProfileByUserID(ctx, c, userID)
 			if err != nil {
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("%s: fetch profile by userId: %w", y.FullName, err))
+				errs = append(errs, fmt.Errorf("%s: fetch profile by userID: %w", y.FullName, err))
 				mu.Unlock()
 				return
 			}
-			if len(byUserId.CurrentProgramsAndRanks) == 0 {
+			if len(byUserID.CurrentProgramsAndRanks) == 0 {
 				mu.Lock()
-				errs = append(errs, fmt.Errorf("%s: profile by userId has no currentProgramsAndRanks", y.FullName))
+				errs = append(errs, fmt.Errorf("%s: profile by userID has no currentProgramsAndRanks", y.FullName))
 				mu.Unlock()
 				return
 			}
-			prog := byUserId.CurrentProgramsAndRanks[0]
+			prog := byUserID.CurrentProgramsAndRanks[0]
 
 			s := ScoutWithDen{
-				PersonGuid: y.PersonGuid,
+				PersonGUID: y.PersonGUID,
 				FullName:   y.FullName,
 				FirstName:  y.FirstName,
 				LastName:   y.LastName,
-				UserId:     userId,
+				UserID:     userID,
 				DenType:    prog.DenType,
 				DenNumber:  prog.DenNumber,
-				DenId:      prog.DenId,
-				RankId:     prog.RankId,
+				DenID:      prog.DenID,
+				RankID:     prog.RankID,
 			}
 
 			mu.Lock()

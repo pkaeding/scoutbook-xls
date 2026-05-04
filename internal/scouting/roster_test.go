@@ -12,21 +12,21 @@ import (
 	"time"
 )
 
-// orgGuid used across roster tests — matches the fixture shape.
-const testOrgGuid = "44444444-4444-4444-4444-444444444444"
+// orgGUID used across roster tests — matches the fixture shape.
+const testOrgGUID = "44444444-4444-4444-4444-444444444444"
 
 const (
-	wesleyGuid   = "22222222-1111-1111-1111-222222222222"
-	wesleyUserId = 20000001
-	kirkGuid     = "30000001-0001-0001-0001-300000000001"
-	kirkUserId   = 20000101
+	wesleyGUID   = "22222222-1111-1111-1111-222222222222"
+	wesleyUserID = 20000001
+	kirkGUID     = "30000001-0001-0001-0001-300000000001"
+	kirkUserID   = 20000101
 )
 
 func TestFetchRoster(t *testing.T) {
 	fixture := loadFixture(t, "roster_pack0123.json")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		wantPath := "/organizations/positions/" + testOrgGuid
+		wantPath := "/organizations/positions/" + testOrgGUID
 		if r.URL.Path != wantPath {
 			t.Errorf("unexpected path: got %q, want %q", r.URL.Path, wantPath)
 			w.WriteHeader(http.StatusNotFound)
@@ -42,7 +42,7 @@ func TestFetchRoster(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
-	roster, err := FetchRoster(ctx, client, testOrgGuid)
+	roster, err := FetchRoster(ctx, client, testOrgGUID)
 	if err != nil {
 		t.Fatalf("FetchRoster returned error: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestExtractYouthMembers(t *testing.T) {
 
 	foundWesley := false
 	for _, y := range youth {
-		if y.PersonGuid == wesleyGuid {
+		if y.PersonGUID == wesleyGUID {
 			foundWesley = true
 			break
 		}
@@ -89,13 +89,13 @@ func TestExtractYouthMembers(t *testing.T) {
 // buildResolveScoutDensServer constructs a dispatching httptest server for the
 // polymorphic /personprofile endpoint used by ResolveScoutDens. Any paths that
 // aren't explicitly handled return 404.
-func buildResolveScoutDensServer(t *testing.T, wesleyGuidBody, wesleyUserIdBody []byte) *httptest.Server {
+func buildResolveScoutDensServer(t *testing.T, wesleyGUIDBody, wesleyUserIDBody []byte) *httptest.Server {
 	t.Helper()
 
-	kirkGuidBody := []byte(fmt.Sprintf(
-		`{"profile":{"fullName":"James Kirk","userId":%d}}`, kirkUserId,
+	kirkGUIDBody := []byte(fmt.Sprintf(
+		`{"profile":{"fullName":"James Kirk","userId":%d}}`, kirkUserID,
 	))
-	kirkUserIdBody := []byte(
+	kirkUserIDBody := []byte(
 		`{"profile":{"fullName":"James Kirk"},` +
 			`"currentProgramsAndRanks":[{"denType":"Wolf","denNumber":"2","denId":99,"rankId":9}]}`,
 	)
@@ -108,14 +108,14 @@ func buildResolveScoutDensServer(t *testing.T, wesleyGuidBody, wesleyUserIdBody 
 
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/persons/v2/" + wesleyGuid + "/personprofile":
-			_, _ = w.Write(wesleyGuidBody)
-		case fmt.Sprintf("/persons/v2/%d/personprofile", wesleyUserId):
-			_, _ = w.Write(wesleyUserIdBody)
-		case "/persons/v2/" + kirkGuid + "/personprofile":
-			_, _ = w.Write(kirkGuidBody)
-		case fmt.Sprintf("/persons/v2/%d/personprofile", kirkUserId):
-			_, _ = w.Write(kirkUserIdBody)
+		case "/persons/v2/" + wesleyGUID + "/personprofile":
+			_, _ = w.Write(wesleyGUIDBody)
+		case fmt.Sprintf("/persons/v2/%d/personprofile", wesleyUserID):
+			_, _ = w.Write(wesleyUserIDBody)
+		case "/persons/v2/" + kirkGUID + "/personprofile":
+			_, _ = w.Write(kirkGUIDBody)
+		case fmt.Sprintf("/persons/v2/%d/personprofile", kirkUserID):
+			_, _ = w.Write(kirkUserIDBody)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -123,17 +123,17 @@ func buildResolveScoutDensServer(t *testing.T, wesleyGuidBody, wesleyUserIdBody 
 }
 
 func TestResolveScoutDens(t *testing.T) {
-	wesleyByGuid := loadFixture(t, "profile_wesley_by_guid.json")
-	wesleyByUserId := loadFixture(t, "profile_wesley_by_userid.json")
+	wesleyByGUID := loadFixture(t, "profile_wesley_by_guid.json")
+	wesleyByUserID := loadFixture(t, "profile_wesley_by_userid.json")
 
-	srv := buildResolveScoutDensServer(t, wesleyByGuid, wesleyByUserId)
+	srv := buildResolveScoutDensServer(t, wesleyByGUID, wesleyByUserID)
 	defer srv.Close()
 
 	client := NewClient(srv.URL, "test-token", WithRetryBaseDelay(1*time.Millisecond))
 
 	youth := []YouthMember{
-		{FullName: "Wesley Crusher", FirstName: "Wesley", LastName: "Crusher", PersonGuid: wesleyGuid},
-		{FullName: "James Kirk", FirstName: "James", LastName: "Kirk", PersonGuid: kirkGuid},
+		{FullName: "Wesley Crusher", FirstName: "Wesley", LastName: "Crusher", PersonGUID: wesleyGUID},
+		{FullName: "James Kirk", FirstName: "James", LastName: "Kirk", PersonGUID: kirkGUID},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -148,17 +148,17 @@ func TestResolveScoutDens(t *testing.T) {
 		t.Fatalf("scouts len = %d, want %d", got, want)
 	}
 
-	byGuid := map[string]ScoutWithDen{}
+	byGUID := map[string]ScoutWithDen{}
 	for _, s := range scouts {
-		byGuid[s.PersonGuid] = s
+		byGUID[s.PersonGUID] = s
 	}
 
-	g, ok := byGuid[wesleyGuid]
+	g, ok := byGUID[wesleyGUID]
 	if !ok {
 		t.Fatalf("did not find Wesley in resolved scouts")
 	}
-	if got, want := g.UserId, wesleyUserId; got != want {
-		t.Errorf("wesley.UserId = %d, want %d", got, want)
+	if got, want := g.UserID, wesleyUserID; got != want {
+		t.Errorf("wesley.UserID = %d, want %d", got, want)
 	}
 	if got, want := g.DenType, "Webelos"; got != want {
 		t.Errorf("wesley.DenType = %q, want %q", got, want)
@@ -166,19 +166,19 @@ func TestResolveScoutDens(t *testing.T) {
 	if got, want := g.DenNumber, "1"; got != want {
 		t.Errorf("wesley.DenNumber = %q, want %q", got, want)
 	}
-	if got, want := g.DenId, 99999; got != want {
-		t.Errorf("wesley.DenId = %d, want %d", got, want)
+	if got, want := g.DenID, 99999; got != want {
+		t.Errorf("wesley.DenID = %d, want %d", got, want)
 	}
-	if got, want := g.RankId, 10; got != want {
-		t.Errorf("wesley.RankId = %d, want %d", got, want)
+	if got, want := g.RankID, 10; got != want {
+		t.Errorf("wesley.RankID = %d, want %d", got, want)
 	}
 
-	l, ok := byGuid[kirkGuid]
+	l, ok := byGUID[kirkGUID]
 	if !ok {
 		t.Fatalf("did not find Kirk in resolved scouts")
 	}
-	if got, want := l.UserId, kirkUserId; got != want {
-		t.Errorf("kirk.UserId = %d, want %d", got, want)
+	if got, want := l.UserID, kirkUserID; got != want {
+		t.Errorf("kirk.UserID = %d, want %d", got, want)
 	}
 	if got, want := l.DenType, "Wolf"; got != want {
 		t.Errorf("kirk.DenType = %q, want %q", got, want)
@@ -186,36 +186,36 @@ func TestResolveScoutDens(t *testing.T) {
 	if got, want := l.DenNumber, "2"; got != want {
 		t.Errorf("kirk.DenNumber = %q, want %q", got, want)
 	}
-	if got, want := l.DenId, 99; got != want {
-		t.Errorf("kirk.DenId = %d, want %d", got, want)
+	if got, want := l.DenID, 99; got != want {
+		t.Errorf("kirk.DenID = %d, want %d", got, want)
 	}
-	if got, want := l.RankId, 9; got != want {
-		t.Errorf("kirk.RankId = %d, want %d", got, want)
+	if got, want := l.RankID, 9; got != want {
+		t.Errorf("kirk.RankID = %d, want %d", got, want)
 	}
 }
 
 func TestResolveScoutDensSurfacesErrorsButContinues(t *testing.T) {
 	// Kirk responses — same fabricated JSON as the happy-path server.
-	kirkGuidBody := []byte(fmt.Sprintf(
-		`{"profile":{"fullName":"James Kirk","userId":%d}}`, kirkUserId,
+	kirkGUIDBody := []byte(fmt.Sprintf(
+		`{"profile":{"fullName":"James Kirk","userId":%d}}`, kirkUserID,
 	))
-	kirkUserIdBody := []byte(
+	kirkUserIDBody := []byte(
 		`{"profile":{"fullName":"James Kirk"},` +
 			`"currentProgramsAndRanks":[{"denType":"Wolf","denNumber":"2","denId":99,"rankId":9}]}`,
 	)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/persons/v2/" + wesleyGuid + "/personprofile",
-			fmt.Sprintf("/persons/v2/%d/personprofile", wesleyUserId):
+		case "/persons/v2/" + wesleyGUID + "/personprofile",
+			fmt.Sprintf("/persons/v2/%d/personprofile", wesleyUserID):
 			// Always fail for Wesley. Retry-exhausting 500 keeps it simple.
 			w.WriteHeader(http.StatusInternalServerError)
-		case "/persons/v2/" + kirkGuid + "/personprofile":
+		case "/persons/v2/" + kirkGUID + "/personprofile":
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(kirkGuidBody)
-		case fmt.Sprintf("/persons/v2/%d/personprofile", kirkUserId):
+			_, _ = w.Write(kirkGUIDBody)
+		case fmt.Sprintf("/persons/v2/%d/personprofile", kirkUserID):
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write(kirkUserIdBody)
+			_, _ = w.Write(kirkUserIDBody)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -228,8 +228,8 @@ func TestResolveScoutDensSurfacesErrorsButContinues(t *testing.T) {
 	)
 
 	youth := []YouthMember{
-		{FullName: "Wesley Crusher", FirstName: "Wesley", LastName: "Crusher", PersonGuid: wesleyGuid},
-		{FullName: "James Kirk", FirstName: "James", LastName: "Kirk", PersonGuid: kirkGuid},
+		{FullName: "Wesley Crusher", FirstName: "Wesley", LastName: "Crusher", PersonGUID: wesleyGUID},
+		{FullName: "James Kirk", FirstName: "James", LastName: "Kirk", PersonGUID: kirkGUID},
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -240,7 +240,7 @@ func TestResolveScoutDensSurfacesErrorsButContinues(t *testing.T) {
 	// Kirk should be present with correct den data.
 	var kirk *ScoutWithDen
 	for i := range scouts {
-		if scouts[i].PersonGuid == kirkGuid {
+		if scouts[i].PersonGUID == kirkGUID {
 			kirk = &scouts[i]
 			break
 		}
@@ -248,8 +248,8 @@ func TestResolveScoutDensSurfacesErrorsButContinues(t *testing.T) {
 	if kirk == nil {
 		t.Fatalf("Kirk missing from resolved scouts; got %+v", scouts)
 	}
-	if got, want := kirk.UserId, kirkUserId; got != want {
-		t.Errorf("kirk.UserId = %d, want %d", got, want)
+	if got, want := kirk.UserID, kirkUserID; got != want {
+		t.Errorf("kirk.UserID = %d, want %d", got, want)
 	}
 	if got, want := kirk.DenType, "Wolf"; got != want {
 		t.Errorf("kirk.DenType = %q, want %q", got, want)
@@ -259,10 +259,10 @@ func TestResolveScoutDensSurfacesErrorsButContinues(t *testing.T) {
 	}
 
 	// Wesley must be absent from the returned slice. We pin "absent" (not
-	// "present-with-UserId==0") because the impl should skip a scout once
+	// "present-with-UserID==0") because the impl should skip a scout once
 	// the first profile call fails — no point emitting a stub.
 	for _, s := range scouts {
-		if s.PersonGuid == wesleyGuid {
+		if s.PersonGUID == wesleyGUID {
 			t.Errorf("Wesley should be absent from resolved scouts, got %+v", s)
 		}
 	}
@@ -288,9 +288,9 @@ func TestResolveScoutDensSurfacesErrorsButContinues(t *testing.T) {
 
 func TestFilterByDen(t *testing.T) {
 	scouts := []ScoutWithDen{
-		{FullName: "Wesley Crusher", PersonGuid: wesleyGuid, DenType: "Webelos", DenNumber: "1"},
-		{FullName: "Other Webelos", PersonGuid: "11111111-1111-1111-1111-111111111111", DenType: "Webelos", DenNumber: "1"},
-		{FullName: "James Kirk", PersonGuid: kirkGuid, DenType: "Wolf", DenNumber: "2"},
+		{FullName: "Wesley Crusher", PersonGUID: wesleyGUID, DenType: "Webelos", DenNumber: "1"},
+		{FullName: "Other Webelos", PersonGUID: "11111111-1111-1111-1111-111111111111", DenType: "Webelos", DenNumber: "1"},
+		{FullName: "James Kirk", PersonGUID: kirkGUID, DenType: "Wolf", DenNumber: "2"},
 	}
 
 	got := FilterByDen(scouts, "Webelos", "1")
@@ -313,30 +313,30 @@ func TestResolveScoutDensHonorsConcurrency(t *testing.T) {
 	)
 
 	// Build six fake scouts plus the matching server responses. Each scout
-	// needs both a guid-response (returning a userId) and a userId-response
+	// needs both a guid-response (returning a userID) and a userID-response
 	// (returning den info).
 	type scoutFake struct {
 		guid   string
-		userId int
+		userID int
 	}
 	fakes := make([]scoutFake, 6)
 	youth := make([]YouthMember, 6)
 	for i := range fakes {
 		fakes[i] = scoutFake{
 			guid:   fmt.Sprintf("00000000-0000-0000-0000-00000000000%d", i+1),
-			userId: 1000 + i,
+			userID: 1000 + i,
 		}
 		youth[i] = YouthMember{
 			FullName:   fmt.Sprintf("Scout %d", i+1),
-			PersonGuid: fakes[i].guid,
+			PersonGUID: fakes[i].guid,
 		}
 	}
 
-	guidToUserId := make(map[string]int, len(fakes))
-	userIdValid := make(map[int]bool, len(fakes))
+	guidToUserID := make(map[string]int, len(fakes))
+	userIDValid := make(map[int]bool, len(fakes))
 	for _, f := range fakes {
-		guidToUserId[f.guid] = f.userId
-		userIdValid[f.userId] = true
+		guidToUserID[f.guid] = f.userID
+		userIDValid[f.userID] = true
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -362,14 +362,14 @@ func TestResolveScoutDensHonorsConcurrency(t *testing.T) {
 		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, prefix), suffix)
 
 		w.Header().Set("Content-Type", "application/json")
-		if uid, ok := guidToUserId[id]; ok {
+		if uid, ok := guidToUserID[id]; ok {
 			// guid-shaped response
 			_, _ = fmt.Fprintf(w, `{"profile":{"fullName":"Scout","userId":%d}}`, uid)
 			return
 		}
-		// numeric userId?
+		// numeric userID?
 		var uid int
-		if _, err := fmt.Sscanf(id, "%d", &uid); err == nil && userIdValid[uid] {
+		if _, err := fmt.Sscanf(id, "%d", &uid); err == nil && userIDValid[uid] {
 			_, _ = w.Write([]byte(
 				`{"profile":{"fullName":"Scout"},` +
 					`"currentProgramsAndRanks":[{"denType":"Wolf","denNumber":"2","denId":99,"rankId":9}]}`,
