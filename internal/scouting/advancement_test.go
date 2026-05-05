@@ -147,4 +147,3 @@ func TestFetchAdventureRequirements(t *testing.T) {
 		t.Errorf("len(adv.Requirements) = %d, want %d", got, want)
 	}
 }
-
