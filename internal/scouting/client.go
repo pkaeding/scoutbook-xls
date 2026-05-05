@@ -58,7 +58,7 @@ func NewClient(baseURL, token string, opts ...ClientOption) *Client {
 	c := &Client{
 		baseURL:        baseURL,
 		token:          token,
-		httpClient:     http.DefaultClient,
+		httpClient:     &http.Client{Timeout: 30 * time.Second},
 		maxRetries:     3,
 		retryBaseDelay: 500 * time.Millisecond,
 	}
