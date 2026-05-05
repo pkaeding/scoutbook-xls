@@ -3,7 +3,6 @@ package scouting
 import (
 	"context"
 	"fmt"
-	"sort"
 )
 
 // FetchAdventures returns every adventure across every Cub Scout rank for
@@ -48,60 +47,4 @@ func FetchAdventureRequirements(ctx context.Context, c *Client, userID, adventur
 		return AdventureRequirements{}, err
 	}
 	return a, nil
-}
-
-// DetermineTargetRank picks the rankID held by the majority of scouts.
-// Ties are broken by smallest rankID (deterministic). Any scout whose
-// rankID differs from the winner is surfaced by name in warnings. If the
-// input is empty the result is (0, []string{"no scouts"}).
-func DetermineTargetRank(scouts []ScoutWithDen) (int, []string) {
-	if len(scouts) == 0 {
-		return 0, []string{"no scouts"}
-	}
-
-	counts := map[int]int{}
-	for _, s := range scouts {
-		counts[s.RankID]++
-	}
-
-	// Rank ids sorted ascending so equal counts resolve to the smallest id.
-	ids := make([]int, 0, len(counts))
-	for id := range counts {
-		ids = append(ids, id)
-	}
-	sort.Ints(ids)
-
-	target := ids[0]
-	best := counts[target]
-	for _, id := range ids[1:] {
-		if counts[id] > best {
-			target = id
-			best = counts[id]
-		}
-	}
-
-	// Unanimous? No warnings.
-	if len(ids) == 1 {
-		return target, nil
-	}
-
-	var warnings []string
-	// Include a summary of the tie/split so warnings reference each non-target
-	// rankID (needed for the tie test which asserts both "10" and "11" appear).
-	for _, id := range ids {
-		if id == target {
-			continue
-		}
-		var names []string
-		for _, s := range scouts {
-			if s.RankID == id {
-				names = append(names, s.FullName)
-			}
-		}
-		warnings = append(warnings, fmt.Sprintf(
-			"rankID %d (%d scouts) differs from target rankID %d: %v",
-			id, counts[id], target, names,
-		))
-	}
-	return target, warnings
 }
