@@ -353,18 +353,20 @@ func uniqueSheetName(candidate string, used map[string]bool) string {
 	}
 	for i := 2; ; i++ {
 		suffix := fmt.Sprintf(" (%d)", i)
+		suffixRunes := []rune(suffix)
 		// Leave enough room for suffix inside the 31-char window.
-		max := 31 - len(suffix)
+		max := 31 - len(suffixRunes)
 		if max < 0 {
 			max = 0
 		}
-		trunc := candidate
-		if len(trunc) > max {
-			trunc = trunc[:max]
+		candidateRunes := []rune(candidate)
+		if len(candidateRunes) > max {
+			candidateRunes = candidateRunes[:max]
 		}
-		name := trunc + suffix
-		if len(name) > 31 {
-			name = name[:31]
+		name := string(candidateRunes) + suffix
+		nameRunes := []rune(name)
+		if len(nameRunes) > 31 {
+			name = string(nameRunes[:31])
 		}
 		if !used[name] {
 			used[name] = true
@@ -373,12 +375,13 @@ func uniqueSheetName(candidate string, used map[string]bool) string {
 	}
 }
 
-// truncate31 truncates s to at most 31 bytes (Excel's sheet-name limit).
+// truncate31 truncates s to at most 31 Unicode characters (Excel's sheet-name limit).
 func truncate31(s string) string {
-	if len(s) <= 31 {
+	runes := []rune(s)
+	if len(runes) <= 31 {
 		return s
 	}
-	return s[:31]
+	return string(runes[:31])
 }
 
 // summaryColAWidthFor returns the width (in Excel character units) to use
