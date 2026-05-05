@@ -16,3 +16,5 @@ coverage.html
 
 # HAR captures contain real PII. Never commit.
 *.har
+
+.claude/settings.local.json
