@@ -12,23 +12,41 @@ Caveats worth knowing up front:
 
 ## Install
 
-With Go installed:
+### Download a release (recommended)
+
+1. Go to the [releases page](https://github.com/pkaeding/scoutbook-xls/releases) and open the latest release.
+2. Under **Assets**, download the archive for your platform:
+
+   | Platform | File to download |
+   |---|---|
+   | macOS, Apple Silicon (M1/M2/M3/M4) | `scoutbook-xls_..._darwin_arm64.tar.gz` |
+   | macOS, Intel | `scoutbook-xls_..._darwin_amd64.tar.gz` |
+   | Windows, 64-bit | `scoutbook-xls_..._windows_amd64.zip` |
+   | Linux, 64-bit | `scoutbook-xls_..._linux_amd64.tar.gz` |
+
+3. Extract the archive:
+   - **macOS / Linux**: `tar -xzf scoutbook-xls_*.tar.gz`
+   - **Windows**: right-click the `.zip` → **Extract All**
+
+4. The extracted folder contains the `scoutbook-xls` binary (or `scoutbook-xls.exe` on Windows). You can run it from that folder, or move it somewhere on your PATH for convenience (e.g. `/usr/local/bin` on macOS/Linux).
+
+**macOS Gatekeeper note**: because the binary isn't signed through Apple's paid developer program, macOS may block it on first run. If you see a warning, open **System Settings → Privacy & Security**, scroll down, and click **Allow Anyway** next to the `scoutbook-xls` entry.
+
+### Alternatives
+
+If you have Go installed, you can install directly from source:
 
 ```
 go install github.com/pkaeding/scoutbook-xls@latest
 ```
 
-If there is no tagged release yet, `go install github.com/pkaeding/scoutbook-xls@main` works too.
-
-Alternatively, build from source:
+Or build from a local clone:
 
 ```
 git clone https://github.com/pkaeding/scoutbook-xls.git
 cd scoutbook-xls
 make build
 ```
-
-This produces a `scoutbook-xls` binary in the project directory.
 
 ## Getting your Scouting.org token
 
