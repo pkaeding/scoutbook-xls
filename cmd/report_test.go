@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -260,6 +261,75 @@ func TestDefaultOutputFilename(t *testing.T) {
 	// Pinned default pattern: "{denType}-{denNumber}-progress.xlsx".
 	if got, want := got.Output, "Webelos-1-progress.xlsx"; got != want {
 		t.Errorf("Config.Output = %q, want %q", got, want)
+	}
+}
+
+// TestCanonicalDenType covers the lenient spellings users actually type.
+func TestCanonicalDenType(t *testing.T) {
+	cases := map[string]string{
+		"Arrow of Light":   "Arrow of Light",
+		"Arrow Of Light":   "Arrow of Light", // as the API spells it
+		"arrow of light":   "Arrow of Light",
+		"  Arrow of Light": "Arrow of Light",
+		"webelos":          "Webelos",
+		"WOLF":             "Wolf",
+	}
+	for in, want := range cases {
+		got, ok := canonicalDenType(in)
+		if !ok || got != want {
+			t.Errorf("canonicalDenType(%q) = %q, %v; want %q, true", in, got, ok, want)
+		}
+	}
+
+	for _, in := range []string{"", "Eagle", "Arrow of Lite"} {
+		if got, ok := canonicalDenType(in); ok {
+			t.Errorf("canonicalDenType(%q) = %q, true; want not found", in, got)
+		}
+	}
+}
+
+// TestDefaultOutputFilenameCanonicalizesDenType: a lowercase --den-type still
+// produces a properly-cased default filename.
+func TestDefaultOutputFilenameCanonicalizesDenType(t *testing.T) {
+	clearScoutbookEnv(t)
+	t.Chdir(t.TempDir())
+
+	var got Config
+	calls := 0
+	cmd := NewRootCmd(recordingRunner(&got, &calls))
+	cmd.SetArgs([]string{
+		"--token=abc",
+		"--org-guid=ORG-1",
+		"--den-type=arrow Of light",
+		"--den-number=1",
+	})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if got, want := got.DenType, "Arrow of Light"; got != want {
+		t.Errorf("Config.DenType = %q, want %q", got, want)
+	}
+	if got, want := got.Output, "Arrow of Light-1-progress.xlsx"; got != want {
+		t.Errorf("Config.Output = %q, want %q", got, want)
+	}
+}
+
+// TestRunRejectsUnknownDenType: an unrecognized den type fails before any
+// network work, with a message listing the valid values.
+func TestRunRejectsUnknownDenType(t *testing.T) {
+	err := Run(context.Background(), Config{
+		Token:     "abc",
+		OrgGUID:   "ORG-1",
+		DenType:   "Eagle",
+		DenNumber: "1",
+		BaseURL:   "http://127.0.0.1:1", // must not be dialed
+	})
+	if err == nil {
+		t.Fatal("Run: expected error for unknown den-type, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown den-type") {
+		t.Errorf("Run error = %v, want it to mention \"unknown den-type\"", err)
 	}
 }
 
