@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/pkaeding/scoutbook-xls/internal/report"
@@ -49,6 +50,19 @@ var rankIDByDenType = map[string]int{
 	"Arrow of Light": 12,
 }
 
+// canonicalDenType resolves a user-supplied den type to the spelling used as a
+// key in rankIDByDenType, ignoring case and surrounding whitespace. "arrow of
+// light" and the API's own "Arrow Of Light" both resolve to "Arrow of Light".
+func canonicalDenType(denType string) (string, bool) {
+	want := strings.TrimSpace(denType)
+	for canonical := range rankIDByDenType {
+		if strings.EqualFold(canonical, want) {
+			return canonical, true
+		}
+	}
+	return "", false
+}
+
 // Run is the default RunnerFunc. It fetches data from the Scouting API and
 // writes the XLSX file. Exported so tests and main can wire it.
 func Run(ctx context.Context, cfg Config) error {
@@ -62,6 +76,14 @@ func Run(ctx context.Context, cfg Config) error {
 	if cfg.DenNumber == "" {
 		return errors.New("den-number is required (e.g. --den-number=1)")
 	}
+	// Canonicalize the den type up front so every downstream use — the den
+	// filter, the rank lookup, and the report title — sees one spelling, and
+	// so a typo fails before we spend a roster fetch on it.
+	denType, ok := canonicalDenType(cfg.DenType)
+	if !ok {
+		return fmt.Errorf("unknown den-type %q; expected one of Lion, Tiger, Wolf, Bear, Webelos, Arrow of Light", cfg.DenType)
+	}
+	cfg.DenType = denType
 
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
@@ -116,10 +138,7 @@ func Run(ctx context.Context, cfg Config) error {
 	//    working toward, not what the scouts have most recently earned.
 	//    A Webelos-den scout still finishing Bear shouldn't force the whole
 	//    report onto Bear requirements.
-	rankID, ok := rankIDByDenType[cfg.DenType]
-	if !ok {
-		return fmt.Errorf("unknown den-type %q; expected one of Lion, Tiger, Wolf, Bear, Webelos, Arrow of Light", cfg.DenType)
-	}
+	rankID := rankIDByDenType[cfg.DenType]
 	// Still surface any scouts whose currently-earned rankID differs from the
 	// den's target rank — that's a useful data-quality warning but not an error.
 	for _, s := range filtered {

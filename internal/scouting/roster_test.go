@@ -304,6 +304,29 @@ func TestFilterByDen(t *testing.T) {
 	}
 }
 
+func TestFilterByDenIgnoresCaseAndSpace(t *testing.T) {
+	// The API returns "Arrow Of Light"; users type "Arrow of Light".
+	scouts := []ScoutWithDen{
+		{FullName: "Wesley Crusher", PersonGUID: wesleyGUID, DenType: "Arrow Of Light", DenNumber: "1"},
+		{FullName: "James Kirk", PersonGUID: kirkGUID, DenType: "Wolf", DenNumber: "2"},
+	}
+
+	for _, denType := range []string{"Arrow of Light", "Arrow Of Light", "arrow of light", "  Arrow of Light  "} {
+		got := FilterByDen(scouts, denType, " 1 ")
+		if want := 1; len(got) != want {
+			t.Errorf("FilterByDen(%q) len = %d, want %d", denType, len(got), want)
+			continue
+		}
+		if got[0].FullName != "Wesley Crusher" {
+			t.Errorf("FilterByDen(%q) matched %q, want Wesley Crusher", denType, got[0].FullName)
+		}
+	}
+
+	if got := FilterByDen(scouts, "Bear", "1"); len(got) != 0 {
+		t.Errorf("FilterByDen(Bear) = %+v, want no matches", got)
+	}
+}
+
 func TestResolveScoutDensHonorsConcurrency(t *testing.T) {
 	const concurrency = 2
 

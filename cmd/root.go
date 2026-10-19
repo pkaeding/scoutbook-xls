@@ -76,6 +76,12 @@ func NewRootCmd(runner RunnerFunc) *cobra.Command {
 				DenNumber: v.GetString("den-number"),
 				Output:    v.GetString("output"),
 			}
+			// Use the canonical spelling in the default filename so
+			// "--den-type=webelos" doesn't produce "webelos-1-progress.xlsx".
+			// An unrecognized den type is left alone; Run reports it.
+			if canonical, ok := canonicalDenType(cfg.DenType); ok {
+				cfg.DenType = canonical
+			}
 			if cfg.Output == "" {
 				cfg.Output = fmt.Sprintf("%s-%s-progress.xlsx", cfg.DenType, cfg.DenNumber)
 			}

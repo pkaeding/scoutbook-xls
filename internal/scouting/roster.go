@@ -3,6 +3,7 @@ package scouting
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -172,11 +173,16 @@ func ResolveScoutDens(ctx context.Context, c *Client, youth []YouthMember, concu
 	return scouts, errs
 }
 
-// FilterByDen returns the scouts whose DenType and DenNumber match exactly.
+// FilterByDen returns the scouts in the given den. Matching ignores case and
+// surrounding whitespace: the API spells den types inconsistently (e.g.
+// "Arrow Of Light"), and users type them the way they'd write them.
 func FilterByDen(scouts []ScoutWithDen, denType, denNumber string) []ScoutWithDen {
+	denType = strings.TrimSpace(denType)
+	denNumber = strings.TrimSpace(denNumber)
 	var out []ScoutWithDen
 	for _, s := range scouts {
-		if s.DenType == denType && s.DenNumber == denNumber {
+		if strings.EqualFold(strings.TrimSpace(s.DenType), denType) &&
+			strings.EqualFold(strings.TrimSpace(s.DenNumber), denNumber) {
 			out = append(out, s)
 		}
 	}
