@@ -216,6 +216,22 @@ func Run(ctx context.Context, cfg Config) error {
 			pairs = append(pairs, advPair{scoutIdx: i, adventureID: advID})
 		}
 	}
+	// Required adventures that nobody has started still get a tab, and the
+	// tab needs the requirement list. Progress is zero for everyone, so one
+	// scout's response is enough to supply the structure.
+	fetchedForStructure := map[int]bool{}
+	for i, r := range results {
+		if r.err != nil {
+			continue
+		}
+		for _, a := range r.rankAdventures {
+			if !a.IsRequired || startedAdvIDs[a.AdventureID] || fetchedForStructure[a.AdventureID] {
+				continue
+			}
+			fetchedForStructure[a.AdventureID] = true
+			pairs = append(pairs, advPair{scoutIdx: i, adventureID: a.AdventureID})
+		}
+	}
 	// Deterministic ordering keeps test output stable even if map iteration
 	// re-orders pair generation.
 	sort.Slice(pairs, func(a, b int) bool {

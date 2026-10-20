@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	excelize "github.com/xuri/excelize/v2"
@@ -225,4 +227,133 @@ func serveFixture(t *testing.T, w http.ResponseWriter, dir, name string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_, _ = w.Write(b)
+}
+
+// TestRun_FetchesRequirementsForUnstartedRequiredAdventure pins that a
+// required adventure nobody in the den has started still gets its
+// requirement list fetched (and so a populated tab), while an unstarted
+// elective is not fetched at all.
+func TestRun_FetchesRequirementsForUnstartedRequiredAdventure(t *testing.T) {
+	for _, key := range []string{
+		"SCOUTBOOK_TOKEN", "SCOUTBOOK_ORG_GUID", "SCOUTBOOK_DEN_TYPE",
+		"SCOUTBOOK_DEN_NUMBER", "SCOUTBOOK_OUTPUT",
+	} {
+		t.Setenv(key, "")
+	}
+
+	const (
+		myPgu       = "11111111-1111-1111-1111-111111111111"
+		packOrgGUID = "44444444-4444-4444-4444-444444444444"
+		wesleyGUID  = "22222222-1111-1111-1111-222222222222"
+		wesleyUID   = "20000001"
+
+		// Adventures reset to 0% in the served adventure list: "My Community"
+		// (required) and "Archery (Webelos)" (elective), both Webelos.
+		unstartedRequiredID = 139
+		unstartedElectiveID = 130
+	)
+
+	fixturesDir := findFixturesDir(t)
+	jwtBytes, err := os.ReadFile(filepath.Join(fixturesDir, "jwt.txt"))
+	if err != nil {
+		t.Fatalf("read jwt fixture: %v", err)
+	}
+
+	advReqRe := regexp.MustCompile(`^/advancements/v2/youth/(\d+)/adventures/(\d+)/requirements$`)
+	rankReqRe := regexp.MustCompile(`^/advancements/v2/youth/(\d+)/ranks/(\d+)/requirements$`)
+
+	// Wesley's fixture has every Webelos adventure of interest started, so
+	// reset two of them to 0%.
+	var advs []map[string]any
+	raw, err := os.ReadFile(filepath.Join(fixturesDir, "adventures_wesley.json"))
+	if err != nil {
+		t.Fatalf("read adventures fixture: %v", err)
+	}
+	if err := json.Unmarshal(raw, &advs); err != nil {
+		t.Fatalf("parse adventures fixture: %v", err)
+	}
+	for _, a := range advs {
+		id, _ := a["adventureId"].(float64)
+		if int(id) == unstartedRequiredID || int(id) == unstartedElectiveID {
+			a["percentCompleted"] = 0.0
+			a["dateCompleted"] = nil
+			a["status"] = ""
+		}
+	}
+	advsJSON, err := json.Marshal(advs)
+	if err != nil {
+		t.Fatalf("marshal adventures: %v", err)
+	}
+
+	var mu sync.Mutex
+	fetched := map[int]int{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		switch path {
+		case "/persons/v2/" + myPgu + "/personprofile":
+			serveFixture(t, w, fixturesDir, "me_profile.json")
+			return
+		case "/organizations/positions/" + packOrgGUID:
+			serveFixture(t, w, fixturesDir, "roster_pack0123.json")
+			return
+		case "/persons/v2/" + wesleyGUID + "/personprofile":
+			serveFixture(t, w, fixturesDir, "profile_wesley_by_guid.json")
+			return
+		case "/persons/v2/" + wesleyUID + "/personprofile":
+			serveFixture(t, w, fixturesDir, "profile_wesley_by_userid.json")
+			return
+		case "/advancements/v2/youth/" + wesleyUID + "/adventures":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(advsJSON)
+			return
+		case "/advancements/v2/youth/" + wesleyUID + "/adventures/140/requirements":
+			serveFixture(t, w, fixturesDir, "adventure_140_myfamily_wesley.json")
+			return
+		}
+		if m := rankReqRe.FindStringSubmatch(path); m != nil && m[1] == wesleyUID {
+			serveFixture(t, w, fixturesDir, "rank_webelos_wesley.json")
+			return
+		}
+		if m := advReqRe.FindStringSubmatch(path); m != nil {
+			mu.Lock()
+			advID, _ := strconv.Atoi(m[2])
+			fetched[advID]++
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w,
+				`{"adventureId":%s,"adventureName":"Stub","rankId":11,"percentCompleted":0,"status":"","requirements":[`+
+					`{"requirementId":9001,"requirementNumber":"1","requirementName":"Stub requirement","sortOrder":1,"isCompleted":false,"percentCompleted":0}]}`,
+				m[2])
+			return
+		}
+		if strings.HasPrefix(path, "/persons/v2/") && strings.HasSuffix(path, "/personprofile") {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		t.Errorf("unexpected request: %s %s", r.Method, path)
+		http.Error(w, "unexpected", http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	outPath := filepath.Join(t.TempDir(), "report.xlsx")
+	cfg := Config{
+		Token:     strings.TrimSpace(string(jwtBytes)),
+		DenType:   "Webelos",
+		DenNumber: "1",
+		Output:    outPath,
+		BaseURL:   srv.URL,
+	}
+	if err := Run(context.Background(), cfg); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if fetched[unstartedRequiredID] != 1 {
+		t.Errorf("unstarted required adventure %d fetched %d times, want 1", unstartedRequiredID, fetched[unstartedRequiredID])
+	}
+	if fetched[unstartedElectiveID] != 0 {
+		t.Errorf("unstarted elective adventure %d fetched %d times, want 0", unstartedElectiveID, fetched[unstartedElectiveID])
+	}
 }
