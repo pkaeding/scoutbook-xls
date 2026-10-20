@@ -119,11 +119,11 @@ func newRunFixture(t *testing.T, opts runFixtureOpts) Config {
 			_, _ = w.Write(b)
 		}
 
-		switch {
-		case path == "/persons/v2/"+fixtureMyPgu+"/personprofile":
+		switch path {
+		case "/persons/v2/" + fixtureMyPgu + "/personprofile":
 			serveFixture(t, w, fixturesDir, "me_profile.json")
 			return
-		case path == "/organizations/positions/"+fixturePackOrgGUID:
+		case "/organizations/positions/" + fixturePackOrgGUID:
 			serveFixture(t, w, fixturesDir, "roster_pack0123.json")
 			return
 		}
