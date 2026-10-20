@@ -179,17 +179,27 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 
-	// 10. Collect the set of adventures started by any scout for this rank.
-	startedAdvIDs := map[int]bool{}
+	// 10. Collect the set of adventures we need requirement detail for: those
+	//     started by any scout, plus those linked from a rank requirement.
+	//     The report gets a tab for each of these, including linked
+	//     adventures nobody has started (so the tab can list requirements).
+	//     Keep the linked-adventure test in step with the report builder,
+	//     which only looks at leaf rank requirements (non-empty number).
+	fetchAdvIDs := map[int]bool{}
 	for _, r := range results {
 		for _, a := range r.rankAdventures {
 			if a.PercentCompleted > 0 {
-				startedAdvIDs[a.AdventureID] = true
+				fetchAdvIDs[a.AdventureID] = true
+			}
+		}
+		for _, req := range r.rankReqs.Requirements {
+			if req.RequirementNumber != "" && req.LinkedAdventureID != nil {
+				fetchAdvIDs[*req.LinkedAdventureID] = true
 			}
 		}
 	}
 
-	// 11. For each (scout, started-adventure) pair, fetch per-adventure detail
+	// 11. For each (scout, adventure) pair, fetch per-adventure detail
 	//     in parallel. We collect pairs into a slice so we can fan-out evenly.
 	//
 	//     Only build pairs where THIS scout has the adventure in their own
@@ -209,27 +219,11 @@ func Run(ctx context.Context, cfg Config) error {
 		for _, a := range r.rankAdventures {
 			scoutHas[a.AdventureID] = true
 		}
-		for advID := range startedAdvIDs {
+		for advID := range fetchAdvIDs {
 			if !scoutHas[advID] {
 				continue
 			}
 			pairs = append(pairs, advPair{scoutIdx: i, adventureID: advID})
-		}
-	}
-	// Required adventures that nobody has started still get a tab, and the
-	// tab needs the requirement list. Progress is zero for everyone, so one
-	// scout's response is enough to supply the structure.
-	fetchedForStructure := map[int]bool{}
-	for i, r := range results {
-		if r.err != nil {
-			continue
-		}
-		for _, a := range r.rankAdventures {
-			if !a.IsRequired || startedAdvIDs[a.AdventureID] || fetchedForStructure[a.AdventureID] {
-				continue
-			}
-			fetchedForStructure[a.AdventureID] = true
-			pairs = append(pairs, advPair{scoutIdx: i, adventureID: a.AdventureID})
 		}
 	}
 	// Deterministic ordering keeps test output stable even if map iteration
