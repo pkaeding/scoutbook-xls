@@ -185,6 +185,11 @@ func RenderXLSX(m ReportModel, path string) error {
 		}
 	}
 
+	// "To Plan" sheet sits right after the summary, ahead of the adventures.
+	if err := writeToPlanSheet(f, uniqueSheetName(toPlanSheetName, usedNames), m.ToPlan, styles, boldID); err != nil {
+		return err
+	}
+
 	// Per-adventure sheets.
 	for _, adv := range m.Adventures {
 		raw := adv.Name
@@ -293,6 +298,70 @@ func RenderXLSX(m ReportModel, path string) error {
 
 	if err := f.SaveAs(path); err != nil {
 		return fmt.Errorf("save xlsx: %w", err)
+	}
+	return nil
+}
+
+// toPlanSheetName is the name of the sheet listing unplanned requirements.
+const toPlanSheetName = "To Plan"
+
+// writeToPlanSheet renders requirements still to be planned, grouped under a
+// bold row per adventure, with a "Completed" count column (e.g. "2/8").
+func writeToPlanSheet(f *excelize.File, sheet string, groups []ToPlanGroup, styles *styleCache, boldID int) error {
+	if _, err := f.NewSheet(sheet); err != nil {
+		return fmt.Errorf("new sheet %q: %w", sheet, err)
+	}
+	for col, h := range []string{"Requirement", "Completed"} {
+		cell := cellRefXY(col, 1)
+		if err := f.SetCellValue(sheet, cell, h); err != nil {
+			return fmt.Errorf("set header %s on %q: %w", cell, sheet, err)
+		}
+		if err := f.SetCellStyle(sheet, cell, cell, boldID); err != nil {
+			return fmt.Errorf("style header %s on %q: %w", cell, sheet, err)
+		}
+	}
+	if err := f.SetColWidth(sheet, "A", "A", adventureColAWidth); err != nil {
+		return fmt.Errorf("set to-plan col A width: %w", err)
+	}
+	if err := f.SetColWidth(sheet, "B", "B", scoutColWidth); err != nil {
+		return fmt.Errorf("set to-plan col B width: %w", err)
+	}
+	wrapID, err := styles.get(styleSpec{wrap: true})
+	if err != nil {
+		return err
+	}
+
+	rowIdx := 2
+	if len(groups) == 0 {
+		return f.SetCellValue(sheet, cellRefXY(0, rowIdx), "Nothing left to plan")
+	}
+	for _, g := range groups {
+		cell := cellRefXY(0, rowIdx)
+		if err := f.SetCellValue(sheet, cell, normalizeSpaces(g.AdventureName)); err != nil {
+			return fmt.Errorf("set to-plan adventure %s: %w", cell, err)
+		}
+		if err := f.SetCellStyle(sheet, cell, cell, boldID); err != nil {
+			return fmt.Errorf("style to-plan adventure %s: %w", cell, err)
+		}
+		rowIdx++
+		for _, r := range g.Rows {
+			label := normalizeSpaces(r.Label)
+			aCell := cellRefXY(0, rowIdx)
+			if err := f.SetCellValue(sheet, aCell, label); err != nil {
+				return fmt.Errorf("set to-plan label %s: %w", aCell, err)
+			}
+			if err := f.SetCellStyle(sheet, aCell, aCell, wrapID); err != nil {
+				return fmt.Errorf("style to-plan label %s: %w", aCell, err)
+			}
+			bCell := cellRefXY(1, rowIdx)
+			if err := f.SetCellStr(sheet, bCell, fmt.Sprintf("%d/%d", r.Completed, r.Total)); err != nil {
+				return fmt.Errorf("set to-plan count %s: %w", bCell, err)
+			}
+			if err := f.SetRowHeight(sheet, rowIdx, estimateRowHeight(label, adventureColAWidth)); err != nil {
+				return fmt.Errorf("set to-plan row height %d: %w", rowIdx, err)
+			}
+			rowIdx++
+		}
 	}
 	return nil
 }

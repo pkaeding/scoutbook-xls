@@ -669,7 +669,7 @@ func TestRenderXLSXSizesColumnAAndRowHeights(t *testing.T) {
 	// Adventure sheet column A should be widened to adventureColAWidth (60).
 	advSheet := ""
 	for _, n := range f.GetSheetList() {
-		if n != "Webelos 1" {
+		if n != "Webelos 1" && n != toPlanSheetName {
 			advSheet = n
 			break
 		}
@@ -837,6 +837,57 @@ func TestRenderXLSXAllCompletedGetsGreenFill(t *testing.T) {
 	}
 	if !hasGreenFill("Webelos 1", "B6") {
 		t.Errorf("B6 (all-completed adventure) missing green fill")
+	}
+}
+
+func TestRenderXLSXToPlanSheet(t *testing.T) {
+	m := ReportModel{
+		DenLabel: "Webelos 1",
+		Scouts:   scoutCols("Alice", "Bob"),
+		ToPlan: []ToPlanGroup{{
+			AdventureName: "My Family",
+			Rows:          []ToPlanRow{{Label: "1 — Do a thing", Completed: 1, Total: 2}},
+		}},
+		Adventures: []AdventureSheet{{Name: "My Family"}},
+	}
+	path := xlsxTempPath(t)
+	if err := RenderXLSX(m, path); err != nil {
+		t.Fatalf("RenderXLSX: %v", err)
+	}
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	if list := f.GetSheetList(); len(list) < 2 || list[1] != "To Plan" {
+		t.Fatalf("sheets = %v, want To Plan second", list)
+	}
+	if findRowContaining(t, f, "To Plan", "My Family") == 0 {
+		t.Error("adventure heading missing")
+	}
+	row := findRowContaining(t, f, "To Plan", "1 — Do a thing")
+	if row == 0 {
+		t.Fatal("requirement row missing")
+	}
+	if v, _ := f.GetCellValue("To Plan", cellRef("B", row)); v != "1/2" {
+		t.Errorf("count = %q, want 1/2", v)
+	}
+}
+
+func TestRenderXLSXToPlanSheetEmpty(t *testing.T) {
+	m := ReportModel{DenLabel: "Webelos 1", Scouts: scoutCols("Alice")}
+	path := xlsxTempPath(t)
+	if err := RenderXLSX(m, path); err != nil {
+		t.Fatalf("RenderXLSX: %v", err)
+	}
+	f, err := excelize.OpenFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	if findRowContaining(t, f, "To Plan", "Nothing left to plan") == 0 {
+		t.Error("empty message missing")
 	}
 }
 

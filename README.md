@@ -112,6 +112,7 @@ The generated XLSX has:
   - First, one row per rank requirement, with each cell showing that scout's percent complete on that requirement.
   - Then, one row per adventure the den has started (any scout above 0%), with each cell showing that scout's percent complete on the adventure.
   - Percentages are stored as numbers (`0.5` = 50%) and formatted with the `0%` cell format.
+- A **`To Plan` sheet** (right after the summary) listing, grouped by adventure, every requirement that half the den or fewer has completed, with a `Completed` count like `2/8`. A requirement most of the den finished (say, one scout was absent) is left off.
 - A **per-adventure sheet** for each adventure listed on the summary. Rows are that adventure's requirements. Each cell shows the date the scout completed that requirement (blank if not completed). A final `% Complete` row shows each scout's overall percent complete on the adventure.
 
 ## Troubleshooting

@@ -794,3 +794,33 @@ func TestBuildReportAdventureSheetSkipsNoteRows(t *testing.T) {
 		t.Errorf("row 0 label = %q, should not be the Note row", sheet.Rows[0].Label)
 	}
 }
+
+func TestBuildToPlanHalfOrFewerCompleted(t *testing.T) {
+	d := strPtr("2026-01-01")
+	sheets := []AdventureSheet{
+		{Name: "Adv A", Rows: []AdventureRow{
+			{Label: "1 — none", DatesCompleted: []*string{nil, nil, nil, nil}},
+			{Label: "2 — half", DatesCompleted: []*string{d, d, nil, nil}},
+			{Label: "3 — most", DatesCompleted: []*string{d, d, d, nil}},
+		}},
+		{Name: "Adv B", Rows: []AdventureRow{
+			{Label: "1 — all", DatesCompleted: []*string{d, d, d, d}},
+		}},
+	}
+	got := buildToPlan(sheets, 4)
+	if len(got) != 1 || got[0].AdventureName != "Adv A" {
+		t.Fatalf("groups = %+v, want only Adv A", got)
+	}
+	if len(got[0].Rows) != 2 || got[0].Rows[0].Label != "1 — none" || got[0].Rows[1].Label != "2 — half" {
+		t.Errorf("rows = %+v, want none + half", got[0].Rows)
+	}
+	if got[0].Rows[1].Completed != 2 || got[0].Rows[1].Total != 4 {
+		t.Errorf("counts = %d/%d, want 2/4", got[0].Rows[1].Completed, got[0].Rows[1].Total)
+	}
+}
+
+func TestBuildToPlanNoScouts(t *testing.T) {
+	if got := buildToPlan([]AdventureSheet{{Name: "A", Rows: []AdventureRow{{Label: "1"}}}}, 0); got != nil {
+		t.Errorf("got %+v, want nil", got)
+	}
+}

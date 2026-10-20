@@ -71,6 +71,19 @@ type AdventureSheet struct {
 	OverallPcts []float64
 }
 
+// ToPlanRow is a requirement that not enough of the den has completed yet.
+type ToPlanRow struct {
+	Label     string
+	Completed int // scouts who have completed the requirement
+	Total     int // scouts in the den
+}
+
+// ToPlanGroup lists one adventure's unplanned requirements.
+type ToPlanGroup struct {
+	AdventureName string
+	Rows          []ToPlanRow
+}
+
 // ReportModel is the full report returned by BuildReport.
 type ReportModel struct {
 	DenLabel    string
@@ -78,7 +91,8 @@ type ReportModel struct {
 	Scouts      []ScoutCol
 	SummaryRows []SummaryRow
 	Adventures  []AdventureSheet
-	Warnings    []string
+	ToPlan      []ToPlanGroup
+	Warnings   []string
 }
 
 // BuildReport turns a slice of ScoutInput into a ReportModel, ready for rendering.
@@ -305,7 +319,44 @@ func BuildReport(denType, denNumber, rankName string, scouts []ScoutInput) Repor
 		model.Adventures = append(model.Adventures, sheet)
 	}
 
+	model.ToPlan = buildToPlan(model.Adventures, len(resolved))
+
 	return model
+}
+
+// toPlanMaxCompletedFraction is the largest share of the den that may have
+// completed a requirement while it still counts as "unplanned". Anything
+// above it was effectively done as a group (e.g. one scout was absent).
+const toPlanMaxCompletedFraction = 0.5
+
+// buildToPlan returns, per adventure, the requirements that at most half the
+// den has completed. Adventures with nothing left to plan are omitted.
+func buildToPlan(sheets []AdventureSheet, scoutCount int) []ToPlanGroup {
+	if scoutCount == 0 {
+		return nil
+	}
+	var groups []ToPlanGroup
+	for _, sheet := range sheets {
+		group := ToPlanGroup{AdventureName: sheet.Name}
+		if group.AdventureName == "" {
+			group.AdventureName = sheet.ShortName
+		}
+		for _, row := range sheet.Rows {
+			done := 0
+			for _, d := range row.DatesCompleted {
+				if d != nil {
+					done++
+				}
+			}
+			if float64(done) <= toPlanMaxCompletedFraction*float64(scoutCount) {
+				group.Rows = append(group.Rows, ToPlanRow{Label: row.Label, Completed: done, Total: scoutCount})
+			}
+		}
+		if len(group.Rows) > 0 {
+			groups = append(groups, group)
+		}
+	}
+	return groups
 }
 
 // filterLeafRankReqs returns only the rank requirements with a non-empty
