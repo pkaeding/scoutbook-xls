@@ -1,0 +1,32 @@
+{
+  "meritBadges": [
+    {
+      "id": 71,
+      "name": "Leatherwork",
+      "shortName": "Leatherwork",
+      "versions": [
+        {
+          "versionId": "254",
+          "version": "2017",
+          "versionEffectiveDt": "2017-01-01",
+          "versionExpiryDt": "",
+          "expiredDate": ""
+        },
+        {
+          "versionId": "187",
+          "version": "2014",
+          "versionEffectiveDt": "2014-01-01",
+          "versionExpiryDt": "2016-12-31",
+          "expiredDate": ""
+        },
+        {
+          "versionId": "79",
+          "version": "2003",
+          "versionEffectiveDt": "2003-01-01",
+          "versionExpiryDt": "2013-12-31",
+          "expiredDate": ""
+        }
+      ]
+    }
+  ]
+}

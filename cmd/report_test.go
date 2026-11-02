@@ -34,7 +34,7 @@ func clearScoutbookEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{
 		"SCOUTBOOK_TOKEN",
-		"SCOUTBOOK_ORG_GUID",
+		"SCOUTBOOK_PACK_ORG_GUID",
 		"SCOUTBOOK_DEN_TYPE",
 		"SCOUTBOOK_DEN_NUMBER",
 		"SCOUTBOOK_OUTPUT",
@@ -55,7 +55,7 @@ func TestFlagsPopulateConfig(t *testing.T) {
 	cmd := NewRootCmd(recordingRunner(&got, &calls))
 	cmd.SetArgs([]string{
 		"--token=abc",
-		"--org-guid=ORG-1",
+		"--pack-org-guid=ORG-1",
 		"--den-type=Webelos",
 		"--den-number=1",
 		"--output=/tmp/x.xlsx",
@@ -69,11 +69,11 @@ func TestFlagsPopulateConfig(t *testing.T) {
 	}
 
 	want := Config{
-		Token:     "abc",
-		OrgGUID:   "ORG-1",
-		DenType:   "Webelos",
-		DenNumber: "1",
-		Output:    "/tmp/x.xlsx",
+		Token:       "abc",
+		PackOrgGUID: "ORG-1",
+		DenType:     "Webelos",
+		DenNumber:   "1",
+		Output:      "/tmp/x.xlsx",
 	}
 	if got != want {
 		t.Errorf("Config = %+v, want %+v", got, want)
@@ -86,7 +86,7 @@ func TestEnvVarsPopulateConfig(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	t.Setenv("SCOUTBOOK_TOKEN", "env-token")
-	t.Setenv("SCOUTBOOK_ORG_GUID", "ENV-ORG")
+	t.Setenv("SCOUTBOOK_PACK_ORG_GUID", "ENV-ORG")
 	t.Setenv("SCOUTBOOK_DEN_TYPE", "Wolf")
 	t.Setenv("SCOUTBOOK_DEN_NUMBER", "7")
 	t.Setenv("SCOUTBOOK_OUTPUT", "/tmp/env.xlsx")
@@ -104,11 +104,11 @@ func TestEnvVarsPopulateConfig(t *testing.T) {
 	}
 
 	want := Config{
-		Token:     "env-token",
-		OrgGUID:   "ENV-ORG",
-		DenType:   "Wolf",
-		DenNumber: "7",
-		Output:    "/tmp/env.xlsx",
+		Token:       "env-token",
+		PackOrgGUID: "ENV-ORG",
+		DenType:     "Wolf",
+		DenNumber:   "7",
+		Output:      "/tmp/env.xlsx",
 	}
 	if got != want {
 		t.Errorf("Config = %+v, want %+v", got, want)
@@ -121,7 +121,7 @@ func TestConfigFile(t *testing.T) {
 
 	dir := t.TempDir()
 	writeYAML(t, filepath.Join(dir, "scoutbook-xls.yaml"), `token: cfg-token
-org-guid: CFG-ORG
+pack-org-guid: CFG-ORG
 den-type: Bear
 den-number: "3"
 output: /tmp/cfg.xlsx
@@ -141,11 +141,11 @@ output: /tmp/cfg.xlsx
 	}
 
 	want := Config{
-		Token:     "cfg-token",
-		OrgGUID:   "CFG-ORG",
-		DenType:   "Bear",
-		DenNumber: "3",
-		Output:    "/tmp/cfg.xlsx",
+		Token:       "cfg-token",
+		PackOrgGUID: "CFG-ORG",
+		DenType:     "Bear",
+		DenNumber:   "3",
+		Output:      "/tmp/cfg.xlsx",
 	}
 	if got != want {
 		t.Errorf("Config = %+v, want %+v", got, want)
@@ -157,7 +157,7 @@ func TestPrecedenceFlagOverridesEnv(t *testing.T) {
 	t.Chdir(t.TempDir())
 
 	t.Setenv("SCOUTBOOK_TOKEN", "env-token")
-	t.Setenv("SCOUTBOOK_ORG_GUID", "ENV-ORG")
+	t.Setenv("SCOUTBOOK_PACK_ORG_GUID", "ENV-ORG")
 	t.Setenv("SCOUTBOOK_DEN_TYPE", "Wolf")
 	t.Setenv("SCOUTBOOK_DEN_NUMBER", "7")
 	t.Setenv("SCOUTBOOK_OUTPUT", "/tmp/env.xlsx")
@@ -167,7 +167,7 @@ func TestPrecedenceFlagOverridesEnv(t *testing.T) {
 	cmd := NewRootCmd(recordingRunner(&got, &calls))
 	cmd.SetArgs([]string{
 		"--token=flag-token",
-		"--org-guid=FLAG-ORG",
+		"--pack-org-guid=FLAG-ORG",
 		"--den-type=Webelos",
 		"--den-number=1",
 		"--output=/tmp/flag.xlsx",
@@ -181,11 +181,11 @@ func TestPrecedenceFlagOverridesEnv(t *testing.T) {
 	}
 
 	want := Config{
-		Token:     "flag-token",
-		OrgGUID:   "FLAG-ORG",
-		DenType:   "Webelos",
-		DenNumber: "1",
-		Output:    "/tmp/flag.xlsx",
+		Token:       "flag-token",
+		PackOrgGUID: "FLAG-ORG",
+		DenType:     "Webelos",
+		DenNumber:   "1",
+		Output:      "/tmp/flag.xlsx",
 	}
 	if got != want {
 		t.Errorf("Config = %+v, want %+v", got, want)
@@ -197,7 +197,7 @@ func TestPrecedenceFlagOverridesEnv(t *testing.T) {
 func TestPrecedenceEnvOverridesConfig(t *testing.T) {
 	dir := t.TempDir()
 	writeYAML(t, filepath.Join(dir, "scoutbook-xls.yaml"), `token: cfg-token
-org-guid: CFG-ORG
+pack-org-guid: CFG-ORG
 den-type: Bear
 den-number: "3"
 output: /tmp/cfg.xlsx
@@ -205,7 +205,7 @@ output: /tmp/cfg.xlsx
 	t.Chdir(dir)
 
 	t.Setenv("SCOUTBOOK_TOKEN", "env-token")
-	t.Setenv("SCOUTBOOK_ORG_GUID", "ENV-ORG")
+	t.Setenv("SCOUTBOOK_PACK_ORG_GUID", "ENV-ORG")
 	t.Setenv("SCOUTBOOK_DEN_TYPE", "Wolf")
 	t.Setenv("SCOUTBOOK_DEN_NUMBER", "7")
 	t.Setenv("SCOUTBOOK_OUTPUT", "/tmp/env.xlsx")
@@ -223,11 +223,11 @@ output: /tmp/cfg.xlsx
 	}
 
 	want := Config{
-		Token:     "env-token",
-		OrgGUID:   "ENV-ORG",
-		DenType:   "Wolf",
-		DenNumber: "7",
-		Output:    "/tmp/env.xlsx",
+		Token:       "env-token",
+		PackOrgGUID: "ENV-ORG",
+		DenType:     "Wolf",
+		DenNumber:   "7",
+		Output:      "/tmp/env.xlsx",
 	}
 	if got != want {
 		t.Errorf("Config = %+v, want %+v", got, want)
@@ -246,7 +246,7 @@ func TestDefaultOutputFilename(t *testing.T) {
 	cmd := NewRootCmd(recordingRunner(&got, &calls))
 	cmd.SetArgs([]string{
 		"--token=abc",
-		"--org-guid=ORG-1",
+		"--pack-org-guid=ORG-1",
 		"--den-type=Webelos",
 		"--den-number=1",
 	})
@@ -299,7 +299,7 @@ func TestDefaultOutputFilenameCanonicalizesDenType(t *testing.T) {
 	cmd := NewRootCmd(recordingRunner(&got, &calls))
 	cmd.SetArgs([]string{
 		"--token=abc",
-		"--org-guid=ORG-1",
+		"--pack-org-guid=ORG-1",
 		"--den-type=arrow Of light",
 		"--den-number=1",
 	})
@@ -319,11 +319,11 @@ func TestDefaultOutputFilenameCanonicalizesDenType(t *testing.T) {
 // network work, with a message listing the valid values.
 func TestRunRejectsUnknownDenType(t *testing.T) {
 	err := Run(context.Background(), Config{
-		Token:     "abc",
-		OrgGUID:   "ORG-1",
-		DenType:   "Eagle",
-		DenNumber: "1",
-		BaseURL:   "http://127.0.0.1:1", // must not be dialed
+		Token:       "abc",
+		PackOrgGUID: "ORG-1",
+		DenType:     "Eagle",
+		DenNumber:   "1",
+		BaseURL:     "http://127.0.0.1:1", // must not be dialed
 	})
 	if err == nil {
 		t.Fatal("Run: expected error for unknown den-type, got nil")
@@ -341,7 +341,7 @@ func TestConfigFlagOverridesSearchPath(t *testing.T) {
 	cwd := t.TempDir()
 	// Decoy config in the default search path - should NOT be loaded.
 	writeYAML(t, filepath.Join(cwd, "scoutbook-xls.yaml"), `token: decoy-token
-org-guid: DECOY-ORG
+pack-org-guid: DECOY-ORG
 den-type: Decoy
 den-number: "99"
 output: /tmp/decoy.xlsx
@@ -352,7 +352,7 @@ output: /tmp/decoy.xlsx
 	otherDir := t.TempDir()
 	otherPath := filepath.Join(otherDir, "other.yaml")
 	writeYAML(t, otherPath, `token: other-token
-org-guid: OTHER-ORG
+pack-org-guid: OTHER-ORG
 den-type: Tiger
 den-number: "2"
 output: /tmp/other.xlsx
@@ -371,11 +371,11 @@ output: /tmp/other.xlsx
 	}
 
 	want := Config{
-		Token:     "other-token",
-		OrgGUID:   "OTHER-ORG",
-		DenType:   "Tiger",
-		DenNumber: "2",
-		Output:    "/tmp/other.xlsx",
+		Token:       "other-token",
+		PackOrgGUID: "OTHER-ORG",
+		DenType:     "Tiger",
+		DenNumber:   "2",
+		Output:      "/tmp/other.xlsx",
 	}
 	if got != want {
 		t.Errorf("Config = %+v, want %+v", got, want)

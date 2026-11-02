@@ -1,0 +1,101 @@
+[
+  {
+    "userId": 20000003,
+    "meritBadgeId": 71,
+    "percentCompleted": 1,
+    "status": "Leader Approved",
+    "requirements": [
+      {
+        "id": 7230,
+        "percentCompleted": 0.08,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7231,
+        "percentCompleted": 0.15,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7211,
+        "percentCompleted": 0.23,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7212,
+        "percentCompleted": 0.31,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7213,
+        "percentCompleted": 0.38,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7214,
+        "percentCompleted": 0.46,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7216,
+        "percentCompleted": 0.54,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7217,
+        "percentCompleted": 0.62,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7218,
+        "percentCompleted": 0.69,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7219,
+        "percentCompleted": 0.77,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7221,
+        "percentCompleted": 0.85,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7232,
+        "percentCompleted": 0.92,
+        "advancementStatus": "Started",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      },
+      {
+        "id": 7225,
+        "percentCompleted": 1,
+        "advancementStatus": "Leader Approved",
+        "status": "Success",
+        "message": "Advancement requirement updated successfully."
+      }
+    ]
+  }
+]

@@ -1,6 +1,7 @@
 package scouting
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -8,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -70,10 +72,44 @@ func NewClient(baseURL, token string, opts ...ClientOption) *Client {
 
 // Get performs a GET request against path (appended to baseURL), decoding the
 // JSON response body into out. esbTarget is the URL to base64-encode into the
-// x-esb-url header.
+// x-esb-url header. Transient failures (429, 5xx, network errors) are retried.
 func (c *Client) Get(ctx context.Context, path, esbTarget string, out any) error {
+	return c.do(ctx, http.MethodGet, path, esbTarget, nil, out, true)
+}
+
+// Post performs a POST request with body JSON-encoded, decoding the JSON
+// response into out (which may be nil to discard the response).
+//
+// Unlike Get, only a 429 (the server explicitly declined to process the
+// request) is retried: a 5xx or a dropped connection leaves it unknown
+// whether a write was applied, and the caller is better placed to decide
+// whether replaying it is safe. Non-2xx errors include the start of the
+// response body, since write failures are otherwise hard to diagnose.
+func (c *Client) Post(ctx context.Context, path, esbTarget string, body, out any) error {
+	return c.do(ctx, http.MethodPost, path, esbTarget, body, out, false)
+}
+
+// PostRead is Post for read-only queries that happen to use POST (such as
+// orgYouths). Repeating one is harmless, so transient failures (429, 5xx,
+// network errors) are retried like Get does. Never use it for writes.
+func (c *Client) PostRead(ctx context.Context, path, esbTarget string, body, out any) error {
+	return c.do(ctx, http.MethodPost, path, esbTarget, body, out, true)
+}
+
+// do is the shared request loop behind Get and Post. retryTransient controls
+// whether 5xx responses and network errors are retried; 429 always is.
+func (c *Client) do(ctx context.Context, method, path, esbTarget string, body, out any, retryTransient bool) error {
 	url := c.baseURL + path
 	esbEncoded := base64.StdEncoding.EncodeToString([]byte(esbTarget))
+
+	var payload []byte
+	if body != nil {
+		var err error
+		payload, err = json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("scouting: encode request body: %w", err)
+		}
+	}
 
 	var lastErr error
 	for attempt := 0; attempt < c.maxRetries; attempt++ {
@@ -86,7 +122,11 @@ func (c *Client) Get(ctx context.Context, path, esbTarget string, out any) error
 			}
 		}
 
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		var reqBody io.Reader
+		if payload != nil {
+			reqBody = bytes.NewReader(payload)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 		if err != nil {
 			return err
 		}
@@ -95,6 +135,9 @@ func (c *Client) Get(ctx context.Context, path, esbTarget string, out any) error
 		req.Header.Set("Origin", "https://advancements.scouting.org")
 		req.Header.Set("Referer", "https://advancements.scouting.org/")
 		req.Header.Set("Accept", "application/json")
+		if payload != nil {
+			req.Header.Set("Content-Type", "application/json")
+		}
 
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
@@ -102,13 +145,18 @@ func (c *Client) Get(ctx context.Context, path, esbTarget string, out any) error
 				return ctxErr
 			}
 			lastErr = err
+			if !retryTransient {
+				return err
+			}
 			continue
 		}
 
 		if resp.StatusCode == http.StatusOK {
-			err := json.NewDecoder(resp.Body).Decode(out)
-			_ = resp.Body.Close()
-			if err != nil {
+			defer func() { _ = resp.Body.Close() }()
+			if out == nil {
+				return nil
+			}
+			if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 				return fmt.Errorf("scouting: decode response: %w", err)
 			}
 			return nil
@@ -120,17 +168,21 @@ func (c *Client) Get(ctx context.Context, path, esbTarget string, out any) error
 			return fmt.Errorf("scouting: 401 unauthorized: %w", ErrTokenExpired)
 		}
 
-		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+		if resp.StatusCode == http.StatusTooManyRequests || (retryTransient && resp.StatusCode >= 500) {
 			_, _ = io.Copy(io.Discard, resp.Body)
 			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("scouting: retryable status %d", resp.StatusCode)
 			continue
 		}
 
-		// Non-retryable, non-401 error (e.g. 4xx other than 401/429).
+		// Non-retryable, non-401 error.
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 		_, _ = io.Copy(io.Discard, resp.Body)
 		_ = resp.Body.Close()
-		return fmt.Errorf("scouting: unexpected status %d", resp.StatusCode)
+		if method == http.MethodGet || len(snippet) == 0 {
+			return fmt.Errorf("scouting: unexpected status %d", resp.StatusCode)
+		}
+		return fmt.Errorf("scouting: unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 
 	if lastErr == nil {

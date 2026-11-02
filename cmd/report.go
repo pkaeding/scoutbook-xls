@@ -95,7 +95,7 @@ func Run(ctx context.Context, cfg Config) error {
 
 	// 3. Resolve orgGUID, either from config or via /personprofile on the
 	//    logged-in user.
-	orgGUID := cfg.OrgGUID
+	orgGUID := cfg.PackOrgGUID
 	if orgGUID == "" {
 		discovered, err := discoverOrgGUID(ctx, client, cfg.Token)
 		if err != nil {
@@ -355,7 +355,7 @@ func discoverOrgGUID(ctx context.Context, client *scouting.Client, token string)
 	orgGUID, err := scouting.DiscoverPackOrgGUID(me)
 	if err != nil {
 		if errors.Is(err, scouting.ErrMultiplePacks) {
-			return "", fmt.Errorf("%w — set --org-guid to disambiguate", err)
+			return "", fmt.Errorf("%w — set --pack-org-guid to disambiguate", err)
 		}
 		return "", err
 	}

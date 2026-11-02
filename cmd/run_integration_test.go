@@ -46,13 +46,13 @@ type runFixtureOpts struct {
 
 // newRunFixture starts an httptest server that serves the sanitized
 // fixtures and returns a Config pointed at it, with the discovery path
-// (empty OrgGUID) and Webelos den 1 selected. Every other roster scout
+// (empty PackOrgGUID) and Webelos den 1 selected. Every other roster scout
 // 404s on profile lookup, which Run must skip gracefully.
 func newRunFixture(t *testing.T, opts runFixtureOpts) Config {
 	t.Helper()
 	// Unset any ambient SCOUTBOOK_* env vars that could override cfg.
 	for _, key := range []string{
-		"SCOUTBOOK_TOKEN", "SCOUTBOOK_ORG_GUID", "SCOUTBOOK_DEN_TYPE",
+		"SCOUTBOOK_TOKEN", "SCOUTBOOK_PACK_ORG_GUID", "SCOUTBOOK_DEN_TYPE",
 		"SCOUTBOOK_DEN_NUMBER", "SCOUTBOOK_OUTPUT",
 	} {
 		t.Setenv(key, "")
@@ -180,7 +180,7 @@ func newRunFixture(t *testing.T, opts runFixtureOpts) Config {
 		DenNumber: "1",
 		Output:    filepath.Join(t.TempDir(), "report.xlsx"),
 		BaseURL:   srv.URL,
-		// OrgGUID intentionally left empty so the auto-discovery path runs.
+		// PackOrgGUID intentionally left empty so the auto-discovery path runs.
 	}
 }
 

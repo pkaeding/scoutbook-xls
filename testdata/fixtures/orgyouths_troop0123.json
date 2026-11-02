@@ -1,0 +1,47 @@
+{
+  "organizationInfo": {
+    "organizationGuid": "55555555-5555-5555-5555-555555555555",
+    "organizationName": "Troop 0123",
+    "unitType": "Troop",
+    "organizationNumber": "0123",
+    "charterOrgName": "Riverside Lodge #99"
+  },
+  "members": [
+    {
+      "personGuid": "30000003-0000-0000-0000-300000000003",
+      "memberId": "130000003",
+      "sbUserId": 20000003,
+      "personFullName": "Geordi La Forge",
+      "firstName": "Geordi",
+      "lastName": "La Forge",
+      "position": "Youth Member"
+    },
+    {
+      "personGuid": "30000004-0000-0000-0000-300000000004",
+      "memberId": "130000004",
+      "sbUserId": 20000004,
+      "personFullName": "Data Soong",
+      "firstName": "Data",
+      "lastName": "Soong",
+      "position": "Youth Member"
+    },
+    {
+      "personGuid": "30000005-0000-0000-0000-300000000005",
+      "memberId": "130000005",
+      "sbUserId": 20000005,
+      "personFullName": "Deanna Troi",
+      "firstName": "Deanna",
+      "lastName": "Troi",
+      "position": "Youth Member"
+    },
+    {
+      "personGuid": "30000006-0000-0000-0000-300000000006",
+      "memberId": "130000006",
+      "sbUserId": 20000006,
+      "personFullName": "Worf Rozhenko",
+      "firstName": "Worf",
+      "lastName": "Rozhenko",
+      "position": "Youth Member"
+    }
+  ]
+}
