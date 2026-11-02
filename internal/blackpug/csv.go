@@ -4,6 +4,7 @@
 package blackpug
 
 import (
+	"bufio"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -62,7 +63,13 @@ var requiredColumns = []string{
 // ParseCSV reads a Black Pug export. Columns are located by header name, so
 // column order doesn't matter. Dates are MM-DD-YYYY.
 func ParseCSV(r io.Reader) ([]Row, error) {
-	cr := csv.NewReader(r)
+	// A BOM must go before the csv reader sees it: ahead of a quoted first
+	// header it is a bare-quote error.
+	br := bufio.NewReader(r)
+	if b, err := br.Peek(len(bom)); err == nil && string(b) == bom {
+		_, _ = br.Discard(len(bom))
+	}
+	cr := csv.NewReader(br)
 	cr.FieldsPerRecord = -1
 	cr.TrimLeadingSpace = true
 
@@ -101,9 +108,9 @@ func ParseCSV(r io.Reader) ([]Row, error) {
 		if get("BSA Member ID") == "" && get("Advancement") == "" {
 			continue // blank line
 		}
-		completed, err := time.Parse("01-02-2006", get("Date Completed"))
+		completed, err := parseDate(get("Date Completed"))
 		if err != nil {
-			return nil, fmt.Errorf("blackpug: line %d: bad Date Completed %q (want MM-DD-YYYY)", line, get("Date Completed"))
+			return nil, fmt.Errorf("blackpug: line %d: bad Date Completed %q (want MM-DD-YYYY or M/D/YYYY)", line, get("Date Completed"))
 		}
 		rows = append(rows, Row{
 			Line:        line,
@@ -120,6 +127,20 @@ func ParseCSV(r io.Reader) ([]Row, error) {
 		})
 	}
 	return rows, nil
+}
+
+// parseDate accepts MM-DD-YYYY as Black Pug writes it, and the unpadded or
+// slash-separated forms a spreadsheet re-save produces (7-9-2026, 7/9/2026).
+// Go's "1"/"2" layout elements accept padded and unpadded values alike.
+func parseDate(s string) (time.Time, error) {
+	var err error
+	for _, layout := range []string{"1-2-2006", "1/2/2006"} {
+		var t time.Time
+		if t, err = time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, err
 }
 
 // FilterBadges keeps only the rows for the named badges (case-insensitive,

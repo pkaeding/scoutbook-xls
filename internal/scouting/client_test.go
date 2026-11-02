@@ -329,6 +329,24 @@ func TestClient_Post_RetriesOnly429(t *testing.T) {
 	}
 }
 
+func TestClient_PostRead_RetriesTransient(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		_, _ = io.WriteString(w, "{}")
+	}))
+	defer srv.Close()
+	c := NewClient(srv.URL, "tok", WithRetryBaseDelay(time.Millisecond))
+	var out map[string]any
+	if err := c.PostRead(context.Background(), "/x", "e", map[string]int{}, &out); err != nil || calls != 3 {
+		t.Errorf("err=%v calls=%d, want success after 3 calls", err, calls)
+	}
+}
+
 func TestClient_Post_Unauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) }))
 	defer srv.Close()

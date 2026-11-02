@@ -71,6 +71,19 @@ func TestParseCSV_Errors(t *testing.T) {
 	}
 }
 
+func TestParseCSV_QuotedHeaderBOMAndLooseDates(t *testing.T) {
+	in := "\ufeff\"Unit\",\"BSA Member ID\",\"First Name\",\"Last Name\",\"Advancement Type\",\"Advancement\",\"Version\",\"Date Completed\",\"Approved\"\n" +
+		"\"T1\",\"1\",\"A\",\"B\",\"Merit Badge Requirement\",\"Archery #1\",\"2020\",\"7-9-2026\",\"Yes\"\n" +
+		"\"T1\",\"1\",\"A\",\"B\",\"Merit Badge Requirement\",\"Archery #2\",\"2020\",\"7/10/2026\",\"Yes\"\n"
+	rows, err := ParseCSV(strings.NewReader(in))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0].Completed.Day() != 9 || rows[1].Completed.Day() != 10 {
+		t.Errorf("rows = %+v", rows)
+	}
+}
+
 func TestFilterBadges(t *testing.T) {
 	f, err := os.Open(fixturePath(t, "blackpug_export_troop0123.csv"))
 	if err != nil {

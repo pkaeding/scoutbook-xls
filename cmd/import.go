@@ -151,7 +151,7 @@ func runImport(ctx context.Context, cfg ImportConfig) error {
 		return handleTokenExpired(err)
 	}
 	if report.Problems() {
-		return errors.New("some merit badges were not recorded; see above")
+		return errors.New("some merit badges or awards were not recorded; see above")
 	}
 	return nil
 }

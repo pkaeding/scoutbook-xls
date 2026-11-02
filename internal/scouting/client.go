@@ -89,6 +89,13 @@ func (c *Client) Post(ctx context.Context, path, esbTarget string, body, out any
 	return c.do(ctx, http.MethodPost, path, esbTarget, body, out, false)
 }
 
+// PostRead is Post for read-only queries that happen to use POST (such as
+// orgYouths). Repeating one is harmless, so transient failures (429, 5xx,
+// network errors) are retried like Get does. Never use it for writes.
+func (c *Client) PostRead(ctx context.Context, path, esbTarget string, body, out any) error {
+	return c.do(ctx, http.MethodPost, path, esbTarget, body, out, true)
+}
+
 // do is the shared request loop behind Get and Post. retryTransient controls
 // whether 5xx responses and network errors are retried; 429 always is.
 func (c *Client) do(ctx context.Context, method, path, esbTarget string, body, out any, retryTransient bool) error {

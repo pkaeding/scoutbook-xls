@@ -73,7 +73,10 @@ var meritBadgeKind = kind{
 		for _, b := range badges {
 			item := catalogItem{ID: b.ID, Name: b.Name}
 			for _, v := range b.Versions {
-				id, _ := strconv.Atoi(v.VersionID)
+				id, err := strconv.Atoi(v.VersionID)
+				if err != nil || id == 0 {
+					continue // unusable: can't fetch requirements or post against it
+				}
 				item.Versions = append(item.Versions, catalogVersion{ID: id, Version: v.Version})
 			}
 			out = append(out, item)

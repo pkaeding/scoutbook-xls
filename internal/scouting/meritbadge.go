@@ -124,7 +124,7 @@ func FetchUnitYouths(ctx context.Context, c *Client, orgGUID string) ([]UnitYout
 	}
 	body := map[string]bool{"includeRegistrationDetails": true, "includeExpired": true}
 	path := "/organizations/v2/" + orgGUID + "/orgYouths"
-	if err := c.Post(ctx, path, "https://advancements.scouting.org/roster", body, &out); err != nil {
+	if err := c.PostRead(ctx, path, "https://advancements.scouting.org/roster", body, &out); err != nil {
 		return nil, err
 	}
 	return out.Members, nil
