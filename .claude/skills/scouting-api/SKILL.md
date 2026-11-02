@@ -96,3 +96,13 @@ Small pack → ~150 requests for a full report. Cap concurrency at 8; parallel i
 - Don't verify the JWT signature — you don't have the secret, and you don't need to.
 - Don't paginate — none of these endpoints appear to paginate within a single unit.
 - Don't assume scouts in one den share a `rankId` (they usually do, but at rank-advancement boundaries they may not).
+
+## Recording advancement (write endpoints)
+
+Both are bulk-entry calls (`x-esb-url` = `.../roster/bulk-entry-mb/{orgGuid}` or `.../roster/bulk-entry-award/{orgGuid}`), body is an array with one entry per scout, and a 200 does not mean success — check each `requirements[].status == "Success"` in the response.
+
+- Merit badges: `POST /advancements/v2/youth/meritBadges/{id}/requirements`. Requirement fields: `id, started, dateCompleted, markedCompletedDate, completed, approved, leaderApprovedUserId, leaderApprovedDate`. Only leaf requirements are sent, never parents.
+- Awards: `POST /advancements/v2/youth/awards/{id}/requirements`. Requirement fields: `id, dateEarned, started, completed, markedCompletedDate, approved, leaderApprovedDate` (note `dateEarned`, and no leader user ID).
+- Existing state: `GET /advancements/v2/organization/{org}/{meritBadges|awards}/{id}/userRequirements?memberId=a,b,c` (BSA member IDs; also yields the member→userId map). Award requirements are "done" when `dateEarned` is set; `dateCompleted` there is just the entry day.
+- Catalogs: `GET /advancements/v2/meritBadges?status=all`, `GET /advancements/awards`, `GET /advancements/meritBadges/{id}/requirements?versionId=`. The award equivalent, `/advancements/awards/{id}/requirements?versionId=`, is assumed and not yet seen in a capture.
+- Member → userId: `POST /organizations/v2/{orgGuid}/orgYouths` with `{"includeRegistrationDetails":true,"includeExpired":true}` (`members[].memberId`, `members[].sbUserId`).

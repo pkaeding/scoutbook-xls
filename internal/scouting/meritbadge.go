@@ -64,6 +64,13 @@ type MeritBadgeRequirements struct {
 // FetchMeritBadgeRequirements returns the canonical requirement list for one
 // merit badge version.
 func FetchMeritBadgeRequirements(ctx context.Context, c *Client, orgGUID string, badgeID, versionID int) (MeritBadgeRequirements, error) {
+	path := fmt.Sprintf("/advancements/meritBadges/%d/requirements?versionId=%d", badgeID, versionID)
+	return fetchRequirementList(ctx, c, path, esbBulkEntryMBTarget(orgGUID))
+}
+
+// fetchRequirementList decodes a merit badge (or, assumed identical, award)
+// requirement list.
+func fetchRequirementList(ctx context.Context, c *Client, path, esbTarget string) (MeritBadgeRequirements, error) {
 	var raw struct {
 		MeritBadgeID   flexInt `json:"meritBadgeId"`
 		MeritBadgeName string  `json:"meritBadgeName"`
@@ -78,8 +85,7 @@ func FetchMeritBadgeRequirements(ctx context.Context, c *Client, orgGUID string,
 			ParentRequirementID flexInt `json:"parentRequirementId"`
 		} `json:"requirements"`
 	}
-	path := fmt.Sprintf("/advancements/meritBadges/%d/requirements?versionId=%d", badgeID, versionID)
-	if err := c.Get(ctx, path, esbBulkEntryMBTarget(orgGUID), &raw); err != nil {
+	if err := c.Get(ctx, path, esbTarget, &raw); err != nil {
 		return MeritBadgeRequirements{}, err
 	}
 	out := MeritBadgeRequirements{
@@ -124,15 +130,16 @@ func FetchUnitYouths(ctx context.Context, c *Client, orgGUID string) ([]UnitYout
 	return out.Members, nil
 }
 
-// MeritBadgeProgress is one scout's recorded progress on one merit badge, as
-// returned by userRequirements. MeritBadgeID/VersionID are zero when the
-// scout has no record for the badge.
-type MeritBadgeProgress struct {
-	UserID       int
-	MemberID     string
-	MeritBadgeID int
-	VersionID    int
-	Status       string
+// AdvancementProgress is one scout's recorded progress on one merit badge, as
+// returned by userRequirements. ItemID/VersionID are zero when the scout
+// has no record for it.
+type AdvancementProgress struct {
+	UserID   int
+	MemberID string
+	// ItemID is the merit badge or award ID; zero when there is no record.
+	ItemID    int
+	VersionID int
+	Status    string
 	// Completed maps requirement ID to its recorded completion date, for
 	// requirements that already have one.
 	Completed map[int]string
@@ -140,36 +147,54 @@ type MeritBadgeProgress struct {
 
 // FetchMeritBadgeProgress returns the existing progress of each listed
 // member on one merit badge.
-func FetchMeritBadgeProgress(ctx context.Context, c *Client, orgGUID string, badgeID int, memberIDs []string) ([]MeritBadgeProgress, error) {
+func FetchMeritBadgeProgress(ctx context.Context, c *Client, orgGUID string, badgeID int, memberIDs []string) ([]AdvancementProgress, error) {
+	return fetchProgress(ctx, c, orgGUID, "meritBadges", badgeID, memberIDs, false)
+}
+
+// fetchProgress reads userRequirements for a merit badge or award. noun is
+// the path segment ("meritBadges" or "awards"). Merit badge requirements
+// carry their date in dateCompleted; award requirements in dateEarned
+// (dateCompleted there is just the day the entry was made).
+func fetchProgress(ctx context.Context, c *Client, orgGUID, noun string, id int, memberIDs []string, useDateEarned bool) ([]AdvancementProgress, error) {
 	var raw []struct {
 		UserID       flexInt `json:"userId"`
 		MemberID     flexInt `json:"memberId"`
 		MeritBadgeID flexInt `json:"meritBadgeId"`
+		AwardID      flexInt `json:"awardId"`
 		VersionID    flexInt `json:"versionId"`
 		Status       string  `json:"status"`
 		Requirements []struct {
 			ID            flexInt `json:"id"`
 			DateCompleted *string `json:"dateCompleted"`
+			DateEarned    *string `json:"dateEarned"`
 		} `json:"requirements"`
 	}
-	path := fmt.Sprintf("/advancements/v2/organization/%s/meritBadges/%d/userRequirements?memberId=%s",
-		orgGUID, badgeID, url.QueryEscape(strings.Join(memberIDs, ",")))
-	if err := c.Get(ctx, path, esbBulkEntryMBTarget(orgGUID), &raw); err != nil {
+	path := fmt.Sprintf("/advancements/v2/organization/%s/%s/%d/userRequirements?memberId=%s",
+		orgGUID, noun, id, url.QueryEscape(strings.Join(memberIDs, ",")))
+	target := esbBulkEntryMBTarget(orgGUID)
+	if noun == "awards" {
+		target = esbBulkEntryAwardTarget(orgGUID)
+	}
+	if err := c.Get(ctx, path, target, &raw); err != nil {
 		return nil, err
 	}
-	out := make([]MeritBadgeProgress, 0, len(raw))
+	out := make([]AdvancementProgress, 0, len(raw))
 	for _, r := range raw {
-		p := MeritBadgeProgress{
-			UserID:       r.UserID.Int(),
-			MemberID:     strconv.Itoa(r.MemberID.Int()),
-			MeritBadgeID: r.MeritBadgeID.Int(),
-			VersionID:    r.VersionID.Int(),
-			Status:       r.Status,
-			Completed:    map[int]string{},
+		p := AdvancementProgress{
+			UserID:    r.UserID.Int(),
+			MemberID:  strconv.Itoa(r.MemberID.Int()),
+			ItemID:    max(r.MeritBadgeID.Int(), r.AwardID.Int()),
+			VersionID: r.VersionID.Int(),
+			Status:    r.Status,
+			Completed: map[int]string{},
 		}
 		for _, req := range r.Requirements {
-			if req.DateCompleted != nil && *req.DateCompleted != "" {
-				p.Completed[req.ID.Int()] = *req.DateCompleted
+			date := req.DateCompleted
+			if useDateEarned {
+				date = req.DateEarned
+			}
+			if date != nil && *date != "" {
+				p.Completed[req.ID.Int()] = *date
 			}
 		}
 		out = append(out, p)
@@ -198,8 +223,8 @@ type MeritBadgeScoutEntry struct {
 	Requirements     []MeritBadgeRequirementEntry `json:"requirements"`
 }
 
-// MeritBadgeScoutResult is the server's verdict for one scout's batch.
-type MeritBadgeScoutResult struct {
+// AdvancementScoutResult is the server's verdict for one scout's batch.
+type AdvancementScoutResult struct {
 	UserID           int     `json:"userId"`
 	PercentCompleted float64 `json:"percentCompleted"`
 	Status           string  `json:"status"`
@@ -213,8 +238,8 @@ type MeritBadgeScoutResult struct {
 // PostMeritBadgeRequirements records the entries against one merit badge,
 // the same call the SPA's merit badge bulk-entry page makes. A 200 does not
 // mean every requirement was accepted; callers must inspect each result.
-func PostMeritBadgeRequirements(ctx context.Context, c *Client, orgGUID string, badgeID int, entries []MeritBadgeScoutEntry) ([]MeritBadgeScoutResult, error) {
-	var out []MeritBadgeScoutResult
+func PostMeritBadgeRequirements(ctx context.Context, c *Client, orgGUID string, badgeID int, entries []MeritBadgeScoutEntry) ([]AdvancementScoutResult, error) {
+	var out []AdvancementScoutResult
 	path := fmt.Sprintf("/advancements/v2/youth/meritBadges/%d/requirements", badgeID)
 	if err := c.Post(ctx, path, esbBulkEntryMBTarget(orgGUID), entries, &out); err != nil {
 		return nil, err

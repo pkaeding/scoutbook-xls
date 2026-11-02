@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
@@ -72,95 +71,115 @@ type Options struct {
 	Apply bool
 }
 
-type groupKey struct{ member, badge, version string }
+type groupKey struct{ member, name, version string }
 
 type group struct {
 	key  groupKey
 	rows []Row
 }
 
-// Import matches the export's merit badge requirement rows against
-// Scouting.org and, when opts.Apply is set, records them.
+type itemKey struct{ member, name string }
+
+// Import matches the export's merit badge and award requirement rows
+// against Scouting.org and, when opts.Apply is set, records them.
 //
-// A scout's badge is all-or-nothing: if any row can't be matched to a
-// catalog requirement, nothing is sent for that scout and badge, so a
-// numbering mismatch is reported instead of silently leaving a badge
+// A scout's item is all-or-nothing: if any row can't be matched to a
+// catalog requirement, nothing is sent for that scout and item, so a
+// numbering mismatch is reported instead of silently leaving it
 // half-entered.
 func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (Report, error) {
 	var rep Report
-	groups, badgeRows := groupRows(rows, &rep)
-	if len(groups) == 0 {
-		return rep, nil
-	}
+	warnIgnored(rows, &rep)
 
-	youths, err := scouting.FetchUnitYouths(ctx, c, opts.OrgGUID)
-	if err != nil {
-		return rep, fmt.Errorf("fetch unit roster: %w", err)
-	}
-	userByMember := map[string]int{}
-	for _, y := range youths {
-		if y.UserID != 0 {
-			userByMember[y.MemberID] = y.UserID
+	var userByMember map[string]int
+	for _, k := range kinds {
+		groups, done := groupRows(rows, k, &rep)
+		if len(groups) == 0 {
+			continue
+		}
+		if userByMember == nil {
+			youths, err := scouting.FetchUnitYouths(ctx, c, opts.OrgGUID)
+			if err != nil {
+				return rep, fmt.Errorf("fetch unit roster: %w", err)
+			}
+			userByMember = map[string]int{}
+			for _, y := range youths {
+				if y.UserID != 0 {
+					userByMember[y.MemberID] = y.UserID
+				}
+			}
+		}
+		if err := importKind(ctx, c, k, groups, done, userByMember, opts, &rep); err != nil {
+			return rep, err
 		}
 	}
+	return rep, nil
+}
 
-	catalog, err := scouting.FetchMeritBadges(ctx, c, opts.OrgGUID)
+func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group, done map[itemKey]bool, userByMember map[string]int, opts Options, rep *Report) error {
+	catalog, err := k.catalog(ctx, c, opts.OrgGUID)
 	if err != nil {
-		return rep, fmt.Errorf("fetch merit badge catalog: %w", err)
+		return fmt.Errorf("fetch %s catalog: %w", k.noun, err)
 	}
 
-	// Resolve each group to a catalog badge+version, then work badge by badge
-	// so each badge costs one progress lookup and one write.
+	// Resolve each group to a catalog item+version, then work item by item so
+	// each costs one progress lookup and one write.
 	type target struct {
-		badge   scouting.MeritBadge
-		version scouting.MeritBadgeVerRef
+		item    catalogItem
+		version catalogVersion
 		groups  []group
 	}
-	targets := map[string]*target{} // keyed by "badgeID/versionID"
+	targets := map[string]*target{} // keyed by "itemID/versionID"
 	var targetOrder []string
 	for _, g := range groups {
-		res := Result{Scout: g.rows[0].Scout(), MemberID: g.key.member, Badge: g.key.badge, Version: g.key.version, Outcome: OutcomeSkipped}
+		res := Result{Scout: g.rows[0].Scout(), MemberID: g.key.member, Badge: g.key.name, Version: g.key.version, Outcome: OutcomeSkipped}
 		if _, ok := userByMember[g.key.member]; !ok {
 			res.Reason = "BSA member ID not found in the unit roster"
 			rep.Results = append(rep.Results, res)
 			continue
 		}
-		mb, ok := findBadge(catalog, g.key.badge)
-		if !ok {
-			res.Reason = "no merit badge with this name in the catalog"
+		item, why := k.resolveItem(catalog, g.key.name)
+		if why != "" {
+			res.Reason = why
 			rep.Results = append(rep.Results, res)
 			continue
 		}
-		ver, ok := findVersion(mb, g.key.version)
-		if !ok {
-			res.Reason = fmt.Sprintf("catalog has no %s version %q", mb.Name, g.key.version)
+		ver, why := k.resolveVersion(item, g.key.version)
+		if why != "" {
+			res.Reason = why
 			rep.Results = append(rep.Results, res)
 			continue
 		}
-		k := fmt.Sprintf("%d/%s", mb.ID, ver.VersionID)
-		if targets[k] == nil {
-			targets[k] = &target{badge: mb, version: ver}
-			targetOrder = append(targetOrder, k)
+		key := fmt.Sprintf("%d/%d", item.ID, ver.ID)
+		if targets[key] == nil {
+			targets[key] = &target{item: item, version: ver}
+			targetOrder = append(targetOrder, key)
 		}
-		targets[k].groups = append(targets[k].groups, g)
+		targets[key].groups = append(targets[key].groups, g)
 	}
 
-	// Collect what to send per badge ID.
 	type pending struct {
-		result  int // index into rep.Results
-		userID  int
-		version int
-		reqs    []scouting.MeritBadgeRequirementEntry
+		result int // index into rep.Results
+		scout  plannedScout
 	}
-	pendingByBadge := map[int][]pending{}
-	var badgeOrder []int
+	pendingByItem := map[int][]pending{}
+	var itemOrder []int
 
-	for _, k := range targetOrder {
-		t := targets[k]
-		versionID, _ := strconv.Atoi(t.version.VersionID)
-		reqs, err := scouting.FetchMeritBadgeRequirements(ctx, c, opts.OrgGUID, t.badge.ID, versionID)
+	for _, key := range targetOrder {
+		t := targets[key]
+		skipAll := func(reason string) {
+			for _, g := range t.groups {
+				rep.Results = append(rep.Results, Result{Scout: g.rows[0].Scout(), MemberID: g.key.member, Badge: t.item.Name,
+					Version: t.version.Version, Outcome: OutcomeSkipped, Reason: reason})
+			}
+		}
+		reqs, err := k.requirements(ctx, c, opts.OrgGUID, t.item.ID, t.version.ID)
 		if err != nil {
-			return rep, fmt.Errorf("fetch %s requirements: %w", t.badge.Name, err)
+			if errors.Is(err, scouting.ErrTokenExpired) {
+				return err
+			}
+			skipAll(fmt.Sprintf("couldn't fetch the %s's requirement list: %v", k.noun, err))
+			continue
 		}
 		idx := NewRequirementIndex(reqs.Requirements)
 
@@ -168,20 +187,20 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 		for _, g := range t.groups {
 			members = append(members, g.key.member)
 		}
-		progress, err := scouting.FetchMeritBadgeProgress(ctx, c, opts.OrgGUID, t.badge.ID, members)
+		progress, err := k.progress(ctx, c, opts.OrgGUID, t.item.ID, members)
 		if err != nil {
-			return rep, fmt.Errorf("fetch %s progress: %w", t.badge.Name, err)
+			return fmt.Errorf("fetch %s progress for %s: %w", k.noun, t.item.Name, err)
 		}
-		progressByMember := map[string]scouting.MeritBadgeProgress{}
+		progressByMember := map[string]scouting.AdvancementProgress{}
 		for _, p := range progress {
 			progressByMember[p.MemberID] = p
 		}
 
 		for _, g := range t.groups {
-			res := Result{Scout: g.rows[0].Scout(), MemberID: g.key.member, Badge: t.badge.Name, Version: t.version.Version, Outcome: OutcomeSkipped}
+			res := Result{Scout: g.rows[0].Scout(), MemberID: g.key.member, Badge: t.item.Name, Version: t.version.Version, Outcome: OutcomeSkipped}
 			prog := progressByMember[g.key.member]
-			if prog.MeritBadgeID != 0 && prog.VersionID != versionID {
-				res.Reason = fmt.Sprintf("scout already has this badge on a different version (id %d); not mixing versions", prog.VersionID)
+			if prog.ItemID != 0 && prog.VersionID != t.version.ID {
+				res.Reason = fmt.Sprintf("scout already has this %s on a different version (id %d); not mixing versions", k.noun, prog.VersionID)
 				rep.Results = append(rep.Results, res)
 				continue
 			}
@@ -212,7 +231,7 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 			for id, row := range parentRows {
 				if !idx.HasDescendantIn(id, leaves) {
 					_, num := row.BadgeAndRequirement()
-					rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s: %s lists parent requirement %s without any of its sub-requirements; nothing was recorded for it", res.Scout, t.badge.Name, num))
+					rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s: %s lists parent requirement %s without any of its sub-requirements; nothing was recorded for it", res.Scout, t.item.Name, num))
 				}
 			}
 			if len(res.Unmatched) == 0 && len(matched) == 0 {
@@ -221,14 +240,14 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 				continue
 			}
 			if len(res.Unmatched) > 0 {
-				res.Reason = fmt.Sprintf("%d requirement number(s) don't match the %s %s catalog", len(res.Unmatched), t.badge.Name, t.version.Version)
+				res.Reason = fmt.Sprintf("%d requirement number(s) don't match the %s %s catalog", len(res.Unmatched), t.item.Name, t.version.Version)
 				rep.Results = append(rep.Results, res)
 				continue
 			}
 
 			var ids []int
 			for id := range matched {
-				if _, done := prog.Completed[id]; done {
+				if _, already := prog.Completed[id]; already {
 					res.AlreadyDone++
 					continue
 				}
@@ -242,63 +261,50 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 				continue
 			}
 
-			today := opts.Today.Format("2006-01-02")
-			entries := make([]scouting.MeritBadgeRequirementEntry, 0, len(ids))
+			ps := plannedScout{UserID: userByMember[g.key.member], VersionID: t.version.ID}
 			for _, id := range ids {
-				entries = append(entries, scouting.MeritBadgeRequirementEntry{
-					ID:                   id,
-					Started:              true,
-					DateCompleted:        matched[id].Completed.Format("2006-01-02"),
-					MarkedCompletedDate:  today,
-					Completed:            true,
-					Approved:             true,
-					LeaderApprovedUserID: opts.LeaderUserID,
-					LeaderApprovedDate:   today,
-				})
+				ps.Reqs = append(ps.Reqs, plannedReq{ID: id, Date: matched[id].Completed.Format("2006-01-02")})
 			}
 			res.Outcome = OutcomePlanned
 			rep.Results = append(rep.Results, res)
-			if _, seen := pendingByBadge[t.badge.ID]; !seen {
-				badgeOrder = append(badgeOrder, t.badge.ID)
+			if _, seen := pendingByItem[t.item.ID]; !seen {
+				itemOrder = append(itemOrder, t.item.ID)
 			}
-			pendingByBadge[t.badge.ID] = append(pendingByBadge[t.badge.ID], pending{
-				result: len(rep.Results) - 1, userID: userByMember[g.key.member], version: versionID, reqs: entries,
-			})
+			pendingByItem[t.item.ID] = append(pendingByItem[t.item.ID], pending{result: len(rep.Results) - 1, scout: ps})
 		}
 	}
 
 	if !opts.Apply {
-		return rep, nil
+		return nil
 	}
 
-	for _, badgeID := range badgeOrder {
-		ps := pendingByBadge[badgeID]
-		body := make([]scouting.MeritBadgeScoutEntry, 0, len(ps))
-		for _, p := range ps {
-			body = append(body, scouting.MeritBadgeScoutEntry{
-				OrganizationGUID: opts.OrgGUID, UserID: p.userID, VersionID: p.version, Requirements: p.reqs,
-			})
+	today := opts.Today.Format("2006-01-02")
+	for _, itemID := range itemOrder {
+		pend := pendingByItem[itemID]
+		scouts := make([]plannedScout, 0, len(pend))
+		for _, p := range pend {
+			scouts = append(scouts, p.scout)
 		}
-		results, err := scouting.PostMeritBadgeRequirements(ctx, c, opts.OrgGUID, badgeID, body)
+		results, err := k.post(ctx, c, opts.OrgGUID, itemID, scouts, opts.LeaderUserID, today)
 		if err != nil {
 			if errors.Is(err, scouting.ErrTokenExpired) {
-				return rep, err
+				return err
 			}
 			// Unknown whether the write landed; say so rather than guess.
-			for _, p := range ps {
+			for _, p := range pend {
 				r := &rep.Results[p.result]
 				r.Outcome = OutcomeFailed
 				r.Reason = fmt.Sprintf("request failed (the server may or may not have recorded it; re-run to find out): %v", err)
 			}
 			continue
 		}
-		byUser := map[int]scouting.MeritBadgeScoutResult{}
+		byUser := map[int]scouting.AdvancementScoutResult{}
 		for _, r := range results {
 			byUser[r.UserID] = r
 		}
-		for _, p := range ps {
+		for _, p := range pend {
 			r := &rep.Results[p.result]
-			sr, ok := byUser[p.userID]
+			sr, ok := byUser[p.scout.UserID]
 			if !ok {
 				r.Outcome = OutcomeFailed
 				r.Reason = "server response did not mention this scout"
@@ -310,8 +316,8 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 					bad = append(bad, fmt.Sprintf("requirement %d: %s %s", rr.ID, rr.Status, rr.Message))
 				}
 			}
-			if len(sr.Requirements) < len(p.reqs) {
-				bad = append(bad, fmt.Sprintf("server confirmed %d of %d requirements", len(sr.Requirements), len(p.reqs)))
+			if len(sr.Requirements) < len(p.scout.Reqs) {
+				bad = append(bad, fmt.Sprintf("server confirmed %d of %d requirements", len(sr.Requirements), len(p.scout.Reqs)))
 			}
 			if len(bad) > 0 {
 				r.Outcome = OutcomeFailed
@@ -319,83 +325,70 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 				continue
 			}
 			r.Outcome = OutcomeApplied
-			if badgeRows[badgeKey{r.MemberID, strings.ToLower(r.Badge)}] && sr.Status != "Leader Approved" {
+			if done[itemKey{r.MemberID, strings.ToLower(r.Badge)}] && sr.Status != "Leader Approved" {
 				rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s: %s is marked complete in the export, but Scouting.org reports status %q", r.Scout, r.Badge, sr.Status))
 			}
 		}
 	}
-	return rep, nil
+	return nil
 }
 
-type badgeKey struct{ member, badge string }
+// warnIgnored notes rows no kind imports (e.g. rank requirements).
+func warnIgnored(rows []Row, rep *Report) {
+	ignored := map[string]int{}
+	for _, row := range rows {
+		if handledType(row.Type) {
+			continue
+		}
+		name, _ := row.BadgeAndRequirement()
+		ignored[row.Scout()+"\x00"+row.Type+"\x00"+name]++
+	}
+	var out []string
+	for k, n := range ignored {
+		parts := strings.Split(k, "\x00")
+		out = append(out, fmt.Sprintf("ignored %d %q row(s) for %s: %s (only merit badges and awards can be imported)", n, parts[1], parts[0], parts[2]))
+	}
+	sort.Strings(out)
+	rep.Warnings = append(rep.Warnings, out...)
+}
 
-// groupRows buckets requirement rows by (scout, badge, version), keeping
-// first-seen order, and notes rows it deliberately ignores in rep.Warnings.
-// The returned set holds the (scout, badge) pairs the export lists as a
-// completed merit badge.
-func groupRows(rows []Row, rep *Report) ([]group, map[badgeKey]bool) {
+// groupRows buckets one kind's requirement rows by (scout, name, version),
+// keeping first-seen order, and warns about unapproved rows. The returned
+// set holds the (scout, name) pairs the export lists as completed.
+func groupRows(rows []Row, k kind, rep *Report) ([]group, map[itemKey]bool) {
 	var groups []group
 	index := map[groupKey]int{}
-	completedBadges := map[badgeKey]bool{}
-	ignoredAwards := map[string]int{}
+	completed := map[itemKey]bool{}
 	unapproved := map[string]int{}
 
 	for _, row := range rows {
 		switch row.Type {
-		case TypeMeritBadge:
-			completedBadges[badgeKey{row.MemberID, strings.ToLower(row.Advancement)}] = true
-		case TypeMeritBadgeRequirement:
+		case k.doneType:
+			completed[itemKey{row.MemberID, strings.ToLower(row.Advancement)}] = true
+		case k.reqType:
 			if !row.Approved {
 				unapproved[row.Scout()]++
 				continue
 			}
-			badge, _ := row.BadgeAndRequirement()
-			k := groupKey{row.MemberID, strings.ToLower(badge), row.Version}
-			i, ok := index[k]
+			name, _ := row.BadgeAndRequirement()
+			gk := groupKey{row.MemberID, strings.ToLower(name), row.Version}
+			i, ok := index[gk]
 			if !ok {
 				i = len(groups)
-				index[k] = i
-				groups = append(groups, group{key: groupKey{row.MemberID, badge, row.Version}})
+				index[gk] = i
+				groups = append(groups, group{key: groupKey{row.MemberID, name, row.Version}})
 			}
 			groups[i].rows = append(groups[i].rows, row)
-		default:
-			badge, _ := row.BadgeAndRequirement()
-			ignoredAwards[row.Scout()+"\x00"+row.Type+"\x00"+badge]++
 		}
 	}
 
-	var ignored []string
-	for k, n := range ignoredAwards {
-		parts := strings.Split(k, "\x00")
-		ignored = append(ignored, fmt.Sprintf("ignored %d %q row(s) for %s: %s (only merit badge requirements can be imported)", n, parts[1], parts[0], parts[2]))
-	}
-	sort.Strings(ignored)
-	rep.Warnings = append(rep.Warnings, ignored...)
 	var skipped []string
 	for scout, n := range unapproved {
-		skipped = append(skipped, fmt.Sprintf("ignored %d requirement row(s) for %s that are not marked approved", n, scout))
+		skipped = append(skipped, fmt.Sprintf("ignored %d %s requirement row(s) for %s that are not marked approved", n, k.noun, scout))
 	}
 	sort.Strings(skipped)
 	rep.Warnings = append(rep.Warnings, skipped...)
-	return groups, completedBadges
-}
-
-func findBadge(catalog []scouting.MeritBadge, name string) (scouting.MeritBadge, bool) {
-	for _, mb := range catalog {
-		if strings.EqualFold(strings.TrimSpace(mb.Name), name) {
-			return mb, true
-		}
-	}
-	return scouting.MeritBadge{}, false
-}
-
-func findVersion(mb scouting.MeritBadge, version string) (scouting.MeritBadgeVerRef, bool) {
-	for _, v := range mb.Versions {
-		if v.Version == version {
-			return v, true
-		}
-	}
-	return scouting.MeritBadgeVerRef{}, false
+	return groups, completed
 }
 
 // Write prints a human-readable summary of the report.

@@ -69,6 +69,15 @@ type fakeAPI struct {
 	postHits int
 	// serveOldVersion also serves the 2014 version (187) with 2017's rows.
 	serveOldVersion bool
+	// Award side of the fake.
+	awardPosts      [][]scouting.AwardScoutEntry
+	awardPostESB    string
+	awardProgressQs []string
+	// awardAllDone makes every scout's award requirements already earned.
+	awardAllDone bool
+	// awardReqStatus, if set, is the HTTP status of the award requirement
+	// list (the one endpoint no capture has shown).
+	awardReqStatus int
 	// badgeStatus is the badge status reported after a write.
 	badgeStatus string
 }
@@ -139,6 +148,51 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 		_ = json.NewEncoder(w).Encode(out)
 	})
 
+	mux.HandleFunc("/advancements/awards", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(readFixture(t, "awards_catalog.json"))
+	})
+	mux.HandleFunc("/advancements/awards/101/requirements", func(w http.ResponseWriter, r *http.Request) {
+		if f.awardReqStatus != 0 {
+			w.WriteHeader(f.awardReqStatus)
+			return
+		}
+		if r.URL.Query().Get("versionId") != "414" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write(readFixture(t, "award_101_requirements_v414.json"))
+	})
+	mux.HandleFunc("/advancements/v2/organization/"+testOrgGUID+"/awards/101/userRequirements", func(w http.ResponseWriter, r *http.Request) {
+		f.mu.Lock()
+		f.awardProgressQs = append(f.awardProgressQs, r.URL.Query().Get("memberId"))
+		f.mu.Unlock()
+		var out []map[string]any
+		for _, m := range strings.Split(r.URL.Query().Get("memberId"), ",") {
+			out = append(out, f.awardProgressFor(m))
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})
+	mux.HandleFunc("/advancements/v2/youth/awards/101/requirements", func(w http.ResponseWriter, r *http.Request) {
+		var body []scouting.AwardScoutEntry
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		f.mu.Lock()
+		f.awardPosts = append(f.awardPosts, body)
+		f.awardPostESB = r.Header.Get("x-esb-url")
+		f.mu.Unlock()
+		var out []map[string]any
+		for _, e := range body {
+			var reqs []map[string]any
+			for _, rq := range e.Requirements {
+				reqs = append(reqs, map[string]any{"id": rq.ID, "status": "Success", "message": "from fake server"})
+			}
+			out = append(out, map[string]any{"userId": e.UserID, "awardId": 101, "awardVersionId": 414, "percentCompleted": 1, "status": "Leader Approved", "requirements": reqs})
+		}
+		_ = json.NewEncoder(w).Encode(out)
+	})
+
 	f.srv = httptest.NewServer(mux)
 	t.Cleanup(f.srv.Close)
 	return f
@@ -177,6 +231,27 @@ func (f *fakeAPI) progressFor(member string) map[string]any {
 	return entry
 }
 
+// awardProgressFor builds one member's awards userRequirements entry. The
+// real API gives awards both dateEarned (the real date) and dateCompleted
+// (the day it was entered).
+func (f *fakeAPI) awardProgressFor(member string) map[string]any {
+	memberNum := 0
+	for _, c := range member {
+		memberNum = memberNum*10 + int(c-'0')
+	}
+	entry := map[string]any{"memberId": memberNum, "userId": 0, "award": "Kayaking Award", "requirements": []any{}}
+	if !f.awardAllDone {
+		return entry
+	}
+	entry["awardId"], entry["versionId"], entry["version"] = 101, 414, 2002
+	var reqs []map[string]any
+	for id := 729; id <= 756; id++ { // the whole requirement list, parents included
+		reqs = append(reqs, map[string]any{"id": id, "dateEarned": "2026-07-07", "dateCompleted": "2026-11-01"})
+	}
+	entry["requirements"] = reqs
+	return entry
+}
+
 func (f *fakeAPI) importRows(t *testing.T, apply bool) (Report, error) {
 	t.Helper()
 	token := strings.TrimSpace(string(readFixture(t, "jwt.txt")))
@@ -189,6 +264,8 @@ func (f *fakeAPI) importRows(t *testing.T, apply bool) (Report, error) {
 	})
 }
 
+// resultFor returns the member's first result (merit badges are imported
+// before awards).
 func resultFor(t *testing.T, rep Report, member string) Result {
 	t.Helper()
 	for _, r := range rep.Results {
@@ -197,6 +274,17 @@ func resultFor(t *testing.T, rep Report, member string) Result {
 		}
 	}
 	t.Fatalf("no result for member %s in %+v", member, rep.Results)
+	return Result{}
+}
+
+func resultForItem(t *testing.T, rep Report, member, item string) Result {
+	t.Helper()
+	for _, r := range rep.Results {
+		if r.MemberID == member && r.Badge == item {
+			return r
+		}
+	}
+	t.Fatalf("no %s result for member %s in %+v", item, member, rep.Results)
 	return Result{}
 }
 
@@ -231,12 +319,19 @@ func TestImport_DryRunWritesNothing(t *testing.T) {
 
 	var awardWarning bool
 	for _, w := range rep.Warnings {
-		if strings.Contains(w, "Award Requirement") && strings.Contains(w, "Worf Rozhenko") && strings.Contains(w, "Kayaking BSA") {
+		if strings.Contains(w, "Rank Requirement") && strings.Contains(w, "Worf Rozhenko") && strings.Contains(w, "Tenderfoot") {
 			awardWarning = true
 		}
 	}
 	if !awardWarning {
-		t.Errorf("want a warning about ignored Kayaking BSA award rows, got %q", rep.Warnings)
+		t.Errorf("want a warning about ignored rank rows, got %q", rep.Warnings)
+	}
+
+	if len(api.awardPosts) != 0 {
+		t.Fatal("dry run POSTed an award")
+	}
+	if r := resultForItem(t, rep, geordiMember, "Kayaking Award"); r.Outcome != OutcomePlanned || r.Sent != 23 || r.ParentsSkipped != 0 || r.Version != "2002" {
+		t.Errorf("Geordi's award (export version 0000 -> catalog 2002) = %+v", r)
 	}
 
 	// Progress is looked up once per badge, for exactly the scouts in play.
@@ -547,5 +642,74 @@ func TestReport_WriteAlignsColumnsToLongestNames(t *testing.T) {
 	}
 	if a, b := col(lines[0]), strings.Index(lines[1], "already entered"); a != b {
 		t.Errorf("outcome column misaligned (%d vs %d):\n%s", a, b, buf.String())
+	}
+}
+
+// The award write is a different body from the merit badge one (dateEarned,
+// no leader user ID, different path and x-esb-url); this pins it to the
+// request the SPA sent when an award was entered by hand.
+func TestImport_AwardSendsWhatTheSPASent(t *testing.T) {
+	api := newFakeAPI(t)
+	rep, err := api.importRows(t, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(api.awardPosts) != 1 || len(api.awardPosts[0]) != 1 {
+		t.Fatalf("award POSTs = %+v; want one, for Geordi only", api.awardPosts)
+	}
+	var want []json.RawMessage
+	if err := json.Unmarshal(readFixture(t, "award_101_post_request_geordi.json"), &want); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := json.Marshal(api.awardPosts[0][0])
+	if !jsonEqual(t, got, want[0]) {
+		t.Errorf("award entry differs from the captured SPA request\n got: %s\nwant: %s", got, want[0])
+	}
+	if want := "https://advancements.scouting.org/roster/bulk-entry-award/" + testOrgGUID; decodeESB(t, api.awardPostESB) != want {
+		t.Errorf("x-esb-url = %q, want %q", decodeESB(t, api.awardPostESB), want)
+	}
+	if r := resultForItem(t, rep, geordiMember, "Kayaking Award"); r.Outcome != OutcomeApplied {
+		t.Errorf("award result = %+v", r)
+	}
+	// The merit badge side still ran, once.
+	if len(api.posts) != 1 {
+		t.Errorf("merit badge POSTs = %d", len(api.posts))
+	}
+}
+
+func TestImport_AwardAlreadyEarnedIsNoOp(t *testing.T) {
+	api := newFakeAPI(t)
+	api.awardAllDone = true
+	rep, err := api.importRows(t, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(api.awardPosts) != 0 {
+		t.Errorf("re-sent an already-earned award: %+v", api.awardPosts)
+	}
+	if r := resultForItem(t, rep, geordiMember, "Kayaking Award"); r.Outcome != OutcomeAlreadyEntered || r.Total != 23 {
+		t.Errorf("award result = %+v", r)
+	}
+}
+
+// The award requirement-list endpoint is the one piece not seen in a
+// capture. If it's wrong the awards must be skipped with a clear reason,
+// without taking the merit badge import down with them.
+func TestImport_AwardRequirementListFailureSkipsOnlyTheAward(t *testing.T) {
+	api := newFakeAPI(t)
+	api.awardReqStatus = http.StatusNotFound
+	rep, err := api.importRows(t, true)
+	if err != nil {
+		t.Fatalf("a failing award requirement list must not abort the import: %v", err)
+	}
+	r := resultForItem(t, rep, geordiMember, "Kayaking Award")
+	if r.Outcome != OutcomeSkipped || !strings.Contains(r.Reason, "requirement list") {
+		t.Errorf("award result = %+v", r)
+	}
+	if len(api.awardPosts) != 0 {
+		t.Error("wrote an award without its requirement list")
+	}
+	if r := resultFor(t, rep, geordiMember); r.Outcome != OutcomeApplied {
+		t.Errorf("merit badge result = %+v", r)
 	}
 }

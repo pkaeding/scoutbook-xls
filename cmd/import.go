@@ -43,15 +43,16 @@ func newImportCmd(runner ImportRunnerFunc) *cobra.Command {
 	var configPath string
 	cmd := &cobra.Command{
 		Use:   "import-blackpug <export.csv>",
-		Short: "Record merit badge requirements from a Black Pug export in Scoutbook",
+		Short: "Record merit badge and award requirements from a Black Pug export in Scoutbook",
 		Long: `Reads a Black Pug (summer camp) CSV export and records each completed merit
-badge requirement on Scouting.org, approved by you, dated as in the export.
+badge and award requirement on Scouting.org, approved by you, dated as in the
+export.
 
 By default this is a dry run: it reads from Scouting.org and reports what it
 would record, but changes nothing. Pass --apply to record it. Requirements
 already on record are never overwritten. If any requirement number in the
-export can't be matched to the badge's catalog, nothing is recorded for that
-scout and badge, and the unmatched numbers are listed.`,
+export can't be matched to the catalog, nothing is recorded for that scout and
+badge or award, and the unmatched numbers are listed.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := readConfigFile(v, configPath); err != nil {
@@ -84,7 +85,7 @@ scout and badge, and the unmatched numbers are listed.`,
 	flags := cmd.Flags()
 	flags.String("token", "", "Scouting.org API token")
 	flags.String("troop-org-guid", "", "Organization GUID of the troop to record advancement in (required)")
-	flags.StringSlice("badge", nil, "Only import this merit badge (repeatable or comma-separated), e.g. --badge Leatherwork")
+	flags.StringSlice("badge", nil, "Only import this merit badge or award, by its name in the export (repeatable or comma-separated), e.g. --badge Leatherwork")
 	flags.Bool("apply", false, "Record the advancement (default is a dry run)")
 	flags.StringVar(&configPath, "config", "", "Path to config file (default: ./scoutbook-xls.yaml or $HOME/scoutbook-xls.yaml)")
 	for _, key := range []string{"token", "troop-org-guid"} {

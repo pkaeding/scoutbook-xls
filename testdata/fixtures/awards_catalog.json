@@ -1,0 +1,96 @@
+{
+  "awards": [
+    {
+      "id": "101",
+      "name": "Kayaking Award",
+      "short": "Kayaking Award",
+      "category": "",
+      "itemNumber": "",
+      "rankId": "",
+      "rank": "",
+      "image": "/images/awards/patches/kayaking100.png",
+      "imageSmall": "",
+      "sku": "662788",
+      "skuName": "Scouting America Kayaking Emblem",
+      "price": "4.39",
+      "priceLastupdated": "2026-10-27",
+      "adultAward": "False",
+      "adminNotes": "",
+      "unitTypeId": "",
+      "program": "All",
+      "unitType": "",
+      "scoutNet": "695",
+      "showOnEvents": "True",
+      "showOnQuickEntry": "True",
+      "activeDate": "",
+      "expiredDate": "",
+      "imageUrl100": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/kayaking100.png",
+      "imageUrl200": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/kayaking200.png",
+      "imageUrl300": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/kayaking300.png",
+      "imageUrl400": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/kayaking400.png",
+      "versions": [
+        {
+          "awardVersionId": 414,
+          "version": "2002",
+          "rankId": null,
+          "rank": null,
+          "expiredDate": null,
+          "versionEffectiveDt": "2002-09-01",
+          "versionExpiryDt": null,
+          "image": "/images/awards/patches/kayaking100.png"
+        }
+      ]
+    },
+    {
+      "id": "102",
+      "name": "Mile Swim Award",
+      "short": "Mile Swim Award",
+      "category": "",
+      "itemNumber": "",
+      "rankId": "",
+      "rank": "",
+      "image": "/images/awards/patches/mileswim100.png",
+      "imageSmall": "",
+      "sku": "245",
+      "skuName": "BSA Mile Swim Emblem",
+      "price": "3.99",
+      "priceLastupdated": "2026-10-27",
+      "adultAward": "False",
+      "adminNotes": "",
+      "unitTypeId": "",
+      "program": "All",
+      "unitType": "",
+      "scoutNet": "611",
+      "showOnEvents": "False",
+      "showOnQuickEntry": "False",
+      "activeDate": "",
+      "expiredDate": "",
+      "imageUrl100": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/mileswim100.png",
+      "imageUrl200": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/mileswim200.png",
+      "imageUrl300": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/mileswim300.png",
+      "imageUrl400": "https://d1kn0x9vzr5n76.cloudfront.net/images/awards/patches/mileswim400.png",
+      "versions": [
+        {
+          "awardVersionId": 231,
+          "version": "1950",
+          "rankId": null,
+          "rank": null,
+          "expiredDate": null,
+          "versionEffectiveDt": "1950-01-01",
+          "versionExpiryDt": "2024-05-31",
+          "image": "/images/awards/patches/mileswim100.png"
+        },
+        {
+          "awardVersionId": 232,
+          "version": "2024",
+          "rankId": null,
+          "rank": null,
+          "expiredDate": null,
+          "versionEffectiveDt": "2024-06-01",
+          "versionExpiryDt": null,
+          "image": "/images/awards/patches/mileswim100.png"
+        }
+      ]
+    }
+  ]
+}

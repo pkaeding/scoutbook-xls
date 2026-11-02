@@ -109,7 +109,7 @@ scoutbook-xls --den-type Bear --den-number 3 --output bear3.xlsx
 
 ## Importing merit badges from Black Pug
 
-`scoutbook-xls import-blackpug` records the merit badge requirements from a Black Pug (summer camp) CSV export in Scoutbook, as if you had used the **bulk entry (merit badges)** page: each requirement is dated as in the export, and marked entered and approved today by the leader whose token you supply.
+`scoutbook-xls import-blackpug` records the merit badge and award requirements from a Black Pug (summer camp) CSV export in Scoutbook, as if you had used the **bulk entry (merit badges)** page: each requirement is dated as in the export, and marked entered and approved today by the leader whose token you supply.
 
 ```
 # 1. Dry run (the default): reads from Scouting.org, changes nothing.
@@ -129,7 +129,8 @@ How it behaves:
 - Scouts are matched by **BSA Member ID** against the troop roster; badges by name and the export's `Version` column.
 - Requirements that already have a completion date are left alone, so re-running an import is safe.
 - It is **all-or-nothing per scout and badge**: if any requirement number in the export can't be matched to that badge's requirement list, nothing is recorded for that scout and badge, and the unmatched numbers are printed. (Black Pug spells numbers many ways — `3a`, `3(a)`, `10.`, `1g[2]`, `2 Option A (4)` — and these are normalized before matching; anything still ambiguous is reported rather than guessed.)
-- `Award Requirement` rows (e.g. Kayaking BSA) and rows not marked approved are ignored, with a warning.
+- **Awards** (`Award Requirement` rows, e.g. Kayaking BSA) are recorded the same way through the award bulk-entry call. Black Pug and Scouting.org name awards differently ("Kayaking BSA" vs "Kayaking Award"), so awards also match on the name without a trailing BSA/Award/Patch/Emblem — only if that is unambiguous — and an export version of `0000` means "the award's current version" when there is exactly one. Merit badges always need an exact name and version.
+- Rows of any other type (e.g. rank requirements) and rows not marked approved are ignored, with a warning.
 - A `Merit Badge` row is not written separately. Recording all of a badge's requirements is what completes it; the command warns if Scouting.org doesn't report the badge as Leader Approved afterwards.
 - The command exits non-zero if anything was skipped or failed.
 

@@ -89,6 +89,7 @@ func TestRunImport_Validation(t *testing.T) {
 func TestRunImport_EndToEnd(t *testing.T) {
 	const org = "55555555-5555-5555-5555-555555555555"
 	var posted []map[string]any
+	var awardPosted []map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/orgYouths"):
@@ -97,8 +98,17 @@ func TestRunImport_EndToEnd(t *testing.T) {
 			_, _ = w.Write([]byte(readFixtureFile(t, "meritbadges_catalog.json")))
 		case r.URL.Path == "/advancements/meritBadges/71/requirements":
 			_, _ = w.Write([]byte(readFixtureFile(t, "mb_71_requirements_v254.json")))
+		case r.URL.Path == "/advancements/awards":
+			_, _ = w.Write([]byte(readFixtureFile(t, "awards_catalog.json")))
+		case r.URL.Path == "/advancements/awards/101/requirements":
+			_, _ = w.Write([]byte(readFixtureFile(t, "award_101_requirements_v414.json")))
 		case strings.HasSuffix(r.URL.Path, "/userRequirements"):
-			_, _ = w.Write([]byte(`[{"userId":0,"memberId":130000003,"meritBadgeId":null,"versionId":null,"requirements":[]}]`))
+			_, _ = w.Write([]byte(`[{"userId":0,"memberId":130000003,"meritBadgeId":null,"awardId":null,"versionId":null,"requirements":[]}]`))
+		case r.URL.Path == "/advancements/v2/youth/awards/101/requirements" && r.Method == http.MethodPost:
+			if err := json.NewDecoder(r.Body).Decode(&awardPosted); err != nil {
+				t.Error(err)
+			}
+			_, _ = w.Write([]byte(readFixtureFile(t, "award_101_post_response_geordi.json")))
 		case r.URL.Path == "/advancements/v2/youth/meritBadges/71/requirements" && r.Method == http.MethodPost:
 			if err := json.NewDecoder(r.Body).Decode(&posted); err != nil {
 				t.Error(err)
@@ -150,7 +160,10 @@ func TestRunImport_EndToEnd(t *testing.T) {
 	if len(reqs) != 13 || first["leaderApprovedUserId"] != float64(10000001) || first["leaderApprovedDate"] != "2026-11-01" || first["dateCompleted"] != "2026-07-09" {
 		t.Errorf("first of %d requirements = %v", len(reqs), first)
 	}
-	if !strings.Contains(out.String(), "recorded") {
+	if len(awardPosted) != 1 || len(awardPosted[0]["requirements"].([]any)) != 23 {
+		t.Errorf("awardPosted = %v", awardPosted)
+	}
+	if !strings.Contains(out.String(), "Kayaking Award") || !strings.Contains(out.String(), "recorded") {
 		t.Errorf("out:\n%s", out.String())
 	}
 }
@@ -164,6 +177,8 @@ func TestRunImport_ProblemsFailTheCommand(t *testing.T) {
 			_, _ = w.Write([]byte(`{"members":[]}`))
 		case r.URL.Path == "/advancements/v2/meritBadges":
 			_, _ = w.Write([]byte(readFixtureFile(t, "meritbadges_catalog.json")))
+		case r.URL.Path == "/advancements/awards":
+			_, _ = w.Write([]byte(readFixtureFile(t, "awards_catalog.json")))
 		default:
 			http.NotFound(w, r)
 		}

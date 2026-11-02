@@ -23,8 +23,8 @@ func TestParseCSV_Fixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseCSV: %v", err)
 	}
-	if len(rows) != 48 {
-		t.Fatalf("rows = %d, want 48", len(rows))
+	if len(rows) != 71 {
+		t.Fatalf("rows = %d, want 71", len(rows))
 	}
 	first := rows[0]
 	if first.Scout() != "Geordi La Forge" || first.MemberID != "130000003" {
@@ -100,7 +100,7 @@ func TestFilterBadges(t *testing.T) {
 		t.Errorf("no filter should keep everything: %d, %v", len(got), err)
 	}
 	// Award rows are selectable by their own name.
-	if got, err := FilterBadges(rows, []string{"Kayaking BSA"}); err != nil || len(got) != 2 {
+	if got, err := FilterBadges(rows, []string{"Kayaking BSA"}); err != nil || len(got) != 23 {
 		t.Errorf("Kayaking BSA rows = %d, %v", len(got), err)
 	}
 	if _, err := FilterBadges(rows, []string{"Leatherwork", "Warp Theory"}); err == nil || !strings.Contains(err.Error(), "Warp Theory") {
