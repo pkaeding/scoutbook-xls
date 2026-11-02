@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -275,5 +277,63 @@ func TestClientGivesUpAfterMaxRetries(t *testing.T) {
 	}
 	if got, want := count.Load(), int32(3); got != want {
 		t.Errorf("request count = %d, want %d", got, want)
+	}
+}
+
+func TestClient_Post(t *testing.T) {
+	var gotBody, gotCT, gotAuth, gotESB, gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody, gotCT, gotAuth, gotESB, gotMethod = string(b), r.Header.Get("Content-Type"), r.Header.Get("Authorization"), r.Header.Get("x-esb-url"), r.Method
+		_, _ = io.WriteString(w, `{"ok":true}`)
+	}))
+	defer srv.Close()
+
+	var out struct{ OK bool }
+	c := NewClient(srv.URL, "tok")
+	if err := c.Post(context.Background(), "/x", "https://advancements.scouting.org/roster", map[string]int{"a": 1}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if !out.OK || gotMethod != http.MethodPost || gotBody != `{"a":1}` || gotCT != "application/json" || gotAuth != "Bearer tok" {
+		t.Errorf("method=%s body=%s ct=%s auth=%s out=%+v", gotMethod, gotBody, gotCT, gotAuth, out)
+	}
+	if gotESB != base64.StdEncoding.EncodeToString([]byte("https://advancements.scouting.org/roster")) {
+		t.Errorf("x-esb-url = %q", gotESB)
+	}
+}
+
+func TestClient_Post_RetriesOnly429(t *testing.T) {
+	for _, tc := range []struct {
+		status    int
+		wantCalls int
+	}{
+		{http.StatusTooManyRequests, 3},
+		{http.StatusInternalServerError, 1}, // a write may have landed; never replay it blindly
+		{http.StatusBadRequest, 1},
+	} {
+		calls := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			calls++
+			w.WriteHeader(tc.status)
+			_, _ = io.WriteString(w, "no good")
+		}))
+		c := NewClient(srv.URL, "tok", WithRetryBaseDelay(time.Millisecond))
+		err := c.Post(context.Background(), "/x", "e", map[string]int{}, nil)
+		srv.Close()
+		if err == nil || calls != tc.wantCalls {
+			t.Errorf("status %d: err=%v calls=%d, want error and %d calls", tc.status, err, calls, tc.wantCalls)
+		}
+		if tc.status == http.StatusBadRequest && (err == nil || !strings.Contains(err.Error(), "no good")) {
+			t.Errorf("4xx error should include the response body, got %v", err)
+		}
+	}
+}
+
+func TestClient_Post_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusUnauthorized) }))
+	defer srv.Close()
+	err := NewClient(srv.URL, "tok").Post(context.Background(), "/x", "e", map[string]int{}, nil)
+	if !errors.Is(err, ErrTokenExpired) {
+		t.Errorf("err = %v, want ErrTokenExpired", err)
 	}
 }

@@ -69,7 +69,10 @@ Create a `scoutbook-xls.yaml`:
 token: eyJhbGciOi...
 
 # Optional - auto-discovered if you're in exactly one Pack
-# org-guid: 00000000-0000-0000-0000-000000000000
+# pack-org-guid: 00000000-0000-0000-0000-000000000000
+
+# Only for import-blackpug: your TROOP's organization GUID (not the Pack's)
+# troop-org-guid: 11111111-1111-1111-1111-111111111111
 
 den-type: Webelos
 den-number: "1"
@@ -87,7 +90,7 @@ The config file is looked up in this order:
 Values are resolved with this precedence (highest first):
 
 1. Command-line flags
-2. Environment variables: `SCOUTBOOK_TOKEN`, `SCOUTBOOK_ORG_GUID`, `SCOUTBOOK_DEN_TYPE`, `SCOUTBOOK_DEN_NUMBER`, `SCOUTBOOK_OUTPUT`
+2. Environment variables: `SCOUTBOOK_TOKEN`, `SCOUTBOOK_PACK_ORG_GUID`, `SCOUTBOOK_TROOP_ORG_GUID`, `SCOUTBOOK_DEN_TYPE`, `SCOUTBOOK_DEN_NUMBER`, `SCOUTBOOK_OUTPUT`
 3. Config file
 4. Built-in defaults
 
@@ -104,6 +107,34 @@ scoutbook-xls --token eyJ... --den-type Webelos --den-number 1
 scoutbook-xls --den-type Bear --den-number 3 --output bear3.xlsx
 ```
 
+## Importing merit badges from Black Pug
+
+`scoutbook-xls import-blackpug` records the merit badge requirements from a Black Pug (summer camp) CSV export in Scoutbook, as if you had used the **bulk entry (merit badges)** page: each requirement is dated as in the export, and marked entered and approved today by the leader whose token you supply.
+
+```
+# 1. Dry run (the default): reads from Scouting.org, changes nothing.
+scoutbook-xls import-blackpug --troop-org-guid <troop-org-guid> camp-export.csv
+
+# Optional: limit to one or more badges, e.g. to check one in Scoutbook first.
+scoutbook-xls import-blackpug --badge Leatherwork --badge Pioneering camp-export.csv
+
+# 2. If the report looks right, record it.
+scoutbook-xls import-blackpug --troop-org-guid <troop-org-guid> --apply camp-export.csv
+```
+
+`--troop-org-guid` is the troop's organization GUID. It is separate from `pack-org-guid`, which the den report uses, so one config file can hold both. (Before this command existed the Pack setting was called `org-guid`; that name is no longer read, and you'll get a warning if it's still set.) It, and `--token`, can also come from the config file or environment. `--apply` is deliberately flag-only.
+
+How it behaves:
+
+- Scouts are matched by **BSA Member ID** against the troop roster; badges by name and the export's `Version` column.
+- Requirements that already have a completion date are left alone, so re-running an import is safe.
+- It is **all-or-nothing per scout and badge**: if any requirement number in the export can't be matched to that badge's requirement list, nothing is recorded for that scout and badge, and the unmatched numbers are printed. (Black Pug spells numbers many ways — `3a`, `3(a)`, `10.`, `1g[2]`, `2 Option A (4)` — and these are normalized before matching; anything still ambiguous is reported rather than guessed.)
+- `Award Requirement` rows (e.g. Kayaking BSA) and rows not marked approved are ignored, with a warning.
+- A `Merit Badge` row is not written separately. Recording all of a badge's requirements is what completes it; the command warns if Scouting.org doesn't report the badge as Leader Approved afterwards.
+- The command exits non-zero if anything was skipped or failed.
+
+Always review the dry-run output before using `--apply`. The export itself is personal data about minors: don't commit it.
+
 ## Output format
 
 The generated XLSX has:
@@ -117,8 +148,8 @@ The generated XLSX has:
 ## Troubleshooting
 
 - **"token expired" / 401**: your JWT is stale. Grab a fresh one from DevTools (see above).
-- **"found 0 Pack units"**: your Scouting.org account isn't registered in any Pack. If you believe you are in exactly one Pack and still see this, set `org-guid` manually in the config.
-- **"found multiple Packs"**: the error lists the packs it found. Pick one and set its `org-guid` in the config.
+- **"found 0 Pack units"**: your Scouting.org account isn't registered in any Pack. If you believe you are in exactly one Pack and still see this, set `pack-org-guid` manually in the config.
+- **"found multiple Packs"**: the error lists the packs it found. Pick one and set its `pack-org-guid` in the config.
 - **"no scouts matched den Wolf 3"**: double-check `den-type` and `den-number`. `den-type` is case-sensitive and must be one of `Lion`, `Tiger`, `Wolf`, `Bear`, `Webelos`, or `Arrow of Light`. `den-number` must match the value on the scout's record exactly (quote it in YAML so it stays a string).
 
 ## Development

@@ -23,12 +23,12 @@ import (
 // integration tests can point Run at an httptest.Server. An empty value is
 // treated as the default production URL.
 type Config struct {
-	Token     string
-	OrgGUID   string
-	DenType   string
-	DenNumber string
-	Output    string
-	BaseURL   string
+	Token       string
+	PackOrgGUID string
+	DenType     string
+	DenNumber   string
+	Output      string
+	BaseURL     string
 }
 
 // RunnerFunc is the function signature the root command invokes once
@@ -48,33 +48,23 @@ func NewRootCmd(runner RunnerFunc) *cobra.Command {
 	var configPath string
 
 	cmd := &cobra.Command{
-		Use:   "scoutbook-xls",
-		Short: "Generate a den progress XLSX from Scoutbook data",
+		Use:           "scoutbook-xls",
+		Short:         "Generate a den progress XLSX from Scoutbook data",
+		SilenceErrors: true, // main prints the error once
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if configPath != "" {
-				v.SetConfigFile(configPath)
-			} else {
-				v.SetConfigName("scoutbook-xls")
-				v.SetConfigType("yaml")
-				v.AddConfigPath(".")
-				if home, err := os.UserHomeDir(); err == nil && home != "" {
-					v.AddConfigPath(home)
-				}
+			cmd.SilenceUsage = true // flag mistakes still show usage; runtime errors don't
+			if err := readConfigFile(v, configPath); err != nil {
+				return err
 			}
 
-			if err := v.ReadInConfig(); err != nil {
-				var notFound viper.ConfigFileNotFoundError
-				if !errors.As(err, &notFound) {
-					return err
-				}
-			}
+			warnRenamedOrgGUID(v)
 
 			cfg := Config{
-				Token:     v.GetString("token"),
-				OrgGUID:   v.GetString("org-guid"),
-				DenType:   v.GetString("den-type"),
-				DenNumber: v.GetString("den-number"),
-				Output:    v.GetString("output"),
+				Token:       v.GetString("token"),
+				PackOrgGUID: v.GetString("pack-org-guid"),
+				DenType:     v.GetString("den-type"),
+				DenNumber:   v.GetString("den-number"),
+				Output:      v.GetString("output"),
 			}
 			// Use the canonical spelling in the default filename so
 			// "--den-type=webelos" doesn't produce "webelos-1-progress.xlsx".
@@ -90,18 +80,54 @@ func NewRootCmd(runner RunnerFunc) *cobra.Command {
 		},
 	}
 
+	cmd.AddCommand(newImportCmd(runImport))
+
 	flags := cmd.Flags()
 	flags.String("token", "", "Scouting.org API token")
-	flags.String("org-guid", "", "Organization GUID")
+	flags.String("pack-org-guid", "", "Pack organization GUID (default: auto-discovered from your profile)")
 	flags.String("den-type", "", "Den type (e.g. Wolf, Bear, Webelos)")
 	flags.String("den-number", "", "Den number")
 	flags.String("output", "", "Output XLSX path (default: {den-type}-{den-number}-progress.xlsx)")
 	flags.StringVar(&configPath, "config", "", "Path to config file (default: ./scoutbook-xls.yaml or $HOME/scoutbook-xls.yaml)")
 
-	for _, key := range []string{"token", "org-guid", "den-type", "den-number", "output"} {
+	for _, key := range []string{"token", "pack-org-guid", "den-type", "den-number", "output"} {
 		// BindPFlag cannot fail here because each flag was just registered above.
 		_ = v.BindPFlag(key, flags.Lookup(key))
 	}
 
 	return cmd
+}
+
+// readConfigFile loads the YAML config into v: the explicit path if given,
+// otherwise scoutbook-xls.yaml from the working directory or $HOME. A missing
+// default config file is not an error.
+func readConfigFile(v *viper.Viper, configPath string) error {
+	if configPath != "" {
+		v.SetConfigFile(configPath)
+	} else {
+		v.SetConfigName("scoutbook-xls")
+		v.SetConfigType("yaml")
+		v.AddConfigPath(".")
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			v.AddConfigPath(home)
+		}
+	}
+
+	if err := v.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return err
+		}
+	}
+	return nil
+}
+
+// warnRenamedOrgGUID tells users who still set the old, ambiguous org-guid
+// key (config file or SCOUTBOOK_ORG_GUID) that it is now ignored. It used to
+// be the Pack's GUID; silently dropping it would look like a discovery bug.
+func warnRenamedOrgGUID(v *viper.Viper) {
+	if v.GetString("org-guid") != "" {
+		fmt.Fprintln(os.Stderr, "warning: org-guid / SCOUTBOOK_ORG_GUID is no longer used; "+
+			"rename it to pack-org-guid (the report) or troop-org-guid (import-blackpug)")
+	}
 }
