@@ -98,7 +98,7 @@ func newFakeAPI(t *testing.T) *fakeAPI {
 		_, _ = w.Write(readFixture(t, "meritbadges_catalog.json"))
 	})
 	mux.HandleFunc("/advancements/meritBadges/71/requirements", func(w http.ResponseWriter, r *http.Request) {
-		if v := r.URL.Query().Get("versionId"); v != "254" && !(f.serveOldVersion && v == "187") {
+		if v := r.URL.Query().Get("versionId"); v != "254" && (!f.serveOldVersion || v != "187") {
 			http.NotFound(w, r)
 			return
 		}

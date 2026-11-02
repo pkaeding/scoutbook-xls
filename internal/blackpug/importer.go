@@ -78,7 +78,9 @@ type group struct {
 	rows []Row
 }
 
-type itemKey struct{ member, name string }
+// itemKey identifies a (scout, export name, export version) the export lists
+// as complete. The name is lower-cased export text, not the catalog name.
+type itemKey struct{ member, name, version string }
 
 // Import matches the export's merit badge and award requirement rows
 // against Scouting.org and, when opts.Apply is set, records them.
@@ -116,7 +118,23 @@ func Import(ctx context.Context, c *scouting.Client, rows []Row, opts Options) (
 	return rep, nil
 }
 
-func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group, done map[itemKey]bool, userByMember map[string]int, opts Options, rep *Report) error {
+func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group, done map[itemKey]bool, userByMember map[string]int, opts Options, rep *Report) (retErr error) {
+	firstResult := len(rep.Results)
+	if opts.Apply {
+		// If the token dies partway, entries never sent must not read as
+		// "would record" in an apply-mode report.
+		defer func() {
+			if !errors.Is(retErr, scouting.ErrTokenExpired) {
+				return
+			}
+			for i := firstResult; i < len(rep.Results); i++ {
+				if r := &rep.Results[i]; r.Outcome == OutcomePlanned {
+					r.Outcome = OutcomeSkipped
+					r.Reason = "not sent: the token expired before this was recorded"
+				}
+			}
+		}()
+	}
 	catalog, err := k.catalog(ctx, c, opts.OrgGUID)
 	if err != nil {
 		return fmt.Errorf("fetch %s catalog: %w", k.noun, err)
@@ -161,9 +179,15 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 	type pending struct {
 		result int // index into rep.Results
 		scout  plannedScout
+		done   itemKey // the export's completion row, for the status warning
 	}
 	pendingByItem := map[int][]pending{}
 	var itemOrder []int
+	// queued guards against two export groups for one scout resolving to the
+	// same catalog item (e.g. "Kayaking BSA" and "Kayaking Award"): one POST
+	// must not carry two entries for one user.
+	type queuedKey struct{ item, user int }
+	queued := map[queuedKey]bool{}
 
 	for _, key := range targetOrder {
 		t := targets[key]
@@ -189,7 +213,11 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 		}
 		progress, err := k.progress(ctx, c, opts.OrgGUID, t.item.ID, members)
 		if err != nil {
-			return fmt.Errorf("fetch %s progress for %s: %w", k.noun, t.item.Name, err)
+			if errors.Is(err, scouting.ErrTokenExpired) {
+				return err
+			}
+			skipAll(fmt.Sprintf("couldn't fetch existing progress for the %s: %v", k.noun, err))
+			continue
 		}
 		progressByMember := map[string]scouting.AdvancementProgress{}
 		for _, p := range progress {
@@ -209,6 +237,10 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 			parentRows := map[int]Row{} // parent requirement ID -> row
 			for _, row := range g.rows {
 				_, num := row.BadgeAndRequirement()
+				if num == "" {
+					res.Unmatched = append(res.Unmatched, fmt.Sprintf("(no requirement number in %q, line %d)", row.Advancement, row.Line))
+					continue
+				}
 				id, ok := idx.Lookup(num)
 				if !ok {
 					res.Unmatched = append(res.Unmatched, num)
@@ -228,7 +260,13 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 			for id := range matched {
 				leaves[id] = true
 			}
-			for id, row := range parentRows {
+			parentIDs := make([]int, 0, len(parentRows))
+			for id := range parentRows {
+				parentIDs = append(parentIDs, id)
+			}
+			idx.SortByCatalogOrder(parentIDs) // deterministic warning order
+			for _, id := range parentIDs {
+				row := parentRows[id]
 				if !idx.HasDescendantIn(id, leaves) {
 					_, num := row.BadgeAndRequirement()
 					rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s: %s lists parent requirement %s without any of its sub-requirements; nothing was recorded for it", res.Scout, t.item.Name, num))
@@ -262,6 +300,13 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 			}
 
 			ps := plannedScout{UserID: userByMember[g.key.member], VersionID: t.version.ID}
+			qk := queuedKey{t.item.ID, ps.UserID}
+			if queued[qk] {
+				res.Reason = fmt.Sprintf("another export entry for this scout already resolves to this %s; not sending it twice", k.noun)
+				rep.Results = append(rep.Results, res)
+				continue
+			}
+			queued[qk] = true
 			for _, id := range ids {
 				ps.Reqs = append(ps.Reqs, plannedReq{ID: id, Date: matched[id].Completed.Format("2006-01-02")})
 			}
@@ -270,7 +315,8 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 			if _, seen := pendingByItem[t.item.ID]; !seen {
 				itemOrder = append(itemOrder, t.item.ID)
 			}
-			pendingByItem[t.item.ID] = append(pendingByItem[t.item.ID], pending{result: len(rep.Results) - 1, scout: ps})
+			pendingByItem[t.item.ID] = append(pendingByItem[t.item.ID], pending{result: len(rep.Results) - 1, scout: ps,
+				done: itemKey{g.key.member, strings.ToLower(g.key.name), g.key.version}})
 		}
 	}
 
@@ -325,7 +371,7 @@ func importKind(ctx context.Context, c *scouting.Client, k kind, groups []group,
 				continue
 			}
 			r.Outcome = OutcomeApplied
-			if done[itemKey{r.MemberID, strings.ToLower(r.Badge)}] && sr.Status != "Leader Approved" {
+			if done[p.done] && sr.Status != "Leader Approved" {
 				rep.Warnings = append(rep.Warnings, fmt.Sprintf("%s: %s is marked complete in the export, but Scouting.org reports status %q", r.Scout, r.Badge, sr.Status))
 			}
 		}
@@ -364,7 +410,7 @@ func groupRows(rows []Row, k kind, rep *Report) ([]group, map[itemKey]bool) {
 	for _, row := range rows {
 		switch row.Type {
 		case k.doneType:
-			completed[itemKey{row.MemberID, strings.ToLower(row.Advancement)}] = true
+			completed[itemKey{row.MemberID, strings.ToLower(row.Advancement), row.Version}] = true
 		case k.reqType:
 			if !row.Approved {
 				unapproved[row.Scout()]++
@@ -392,7 +438,11 @@ func groupRows(rows []Row, k kind, rep *Report) ([]group, map[itemKey]bool) {
 }
 
 // Write prints a human-readable summary of the report.
-func (r Report) Write(w io.Writer, apply bool) {
+func (r Report) Write(out io.Writer, apply bool) {
+	// Build in memory (strings.Builder writes can't fail), then write once.
+	var sb strings.Builder
+	w := &sb
+	defer func() { _, _ = io.WriteString(out, sb.String()) }()
 	scoutW, badgeW, outcomeW := 0, 0, 0
 	for _, res := range r.Results {
 		scoutW = max(scoutW, len(res.Scout))
